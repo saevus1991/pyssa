@@ -18,6 +18,9 @@ import models.standard_models as sm
 # set data type to double
 torch.set_default_dtype(torch.float64)
 
+# activate or deactivate plotting
+plotting = False
+
 def get_reaction_tensor(pre):
     # get order of the individual reactions and number of reactions
     num_reactions, num_species = pre.size()
@@ -78,6 +81,10 @@ def next_event(prop):
     """
     time = torch.sum(prop)
 
+class
+
+
+# naive implementation of pyro ssa with hard coded noise
 def pyro_ssa(initial, tspan, model, obs_times):
     sigma = 0.15
     # iterate over time
@@ -102,6 +109,7 @@ def pyro_ssa(initial, tspan, model, obs_times):
         state = state+model.stoichiometry[reaction, :]
         cnt += 1
 
+# try to use the markov method
 def pyro_ssa2(initial, tspan, model, obs_times):
     sigma = 0.1
     # iterate over time
@@ -127,6 +135,57 @@ def pyro_ssa2(initial, tspan, model, obs_times):
         if time > tspan[1]:
             break
 
+# seperate computation of the obervations to get more structure
+def pyro_ssa2(initial, tspan, model, obs_times):
+    sigma = 0.1
+    # iterate over time
+    time = tspan[0]
+    state = initial.clone()
+    cnt_obs = 0
+    # create latent variables
+    for cnt in pyro.markov(range(int(1e6))):
+        # compute propensity
+        delta, prop = mass_action(state, model)
+        # sample updates
+        tau = pyro.sample("tau_{}".format(cnt), dist.Exponential(delta))
+        reaction = pyro.sample("reaction_{}".format(cnt), dist.Categorical(prop))
+        # check if new state ill be larger than current obs time
+        if (cnt_obs < len(obs_times)) and (time < obs_times[cnt_obs]).item() and (time+tau > obs_times[cnt_obs]).item():
+            mu_loc = torch.log(state[-1]+1)
+            obs = pyro.sample("obs_{}".format(cnt_obs), dist.LogNormal(mu_loc, sigma))
+            cnt_obs += 1
+        # update states
+        time = time+tau
+        state = state+model.stoichiometry[reaction, :]
+        # terminating condtion
+        if time > tspan[1]:
+            break
+
+
+def pyro_ssa2(initial, tspan, model, obs_times):
+    sigma = 0.1
+    # iterate over time
+    time = tspan[0]
+    state = initial.clone()
+    cnt_obs = 0
+    # create latent variables
+    for cnt in pyro.markov(range(int(1e6))):
+        # compute propensity
+        delta, prop = mass_action(state, model)
+        # sample updates
+        tau = pyro.sample("tau_{}".format(cnt), dist.Exponential(delta))
+        reaction = pyro.sample("reaction_{}".format(cnt), dist.Categorical(prop))
+        # check if new state ill be larger than current obs time
+        if (cnt_obs < len(obs_times)) and (time < obs_times[cnt_obs]).item() and (time+tau > obs_times[cnt_obs]).item():
+            mu_loc = torch.log(state[-1]+1)
+            obs = pyro.sample("obs_{}".format(cnt_obs), dist.LogNormal(mu_loc, sigma))
+            cnt_obs += 1
+        # update states
+        time = time+tau
+        state = state+model.stoichiometry[reaction, :]
+        # terminating condtion
+        if time > tspan[1]:
+            break
 
 def get_event_history(nodes):
     # initialize
@@ -175,7 +234,7 @@ tspan = torch.tensor([0.0, 3e3])
 delta_t = 300.0
 obs_times = torch.arange(tspan[0]+0.5*delta_t, tspan[1], delta_t)
 
-# poutine trace wrappper 
+# run to obtain synthetic data
 trace_syn = poutine.trace(pyro_ssa).get_trace(initial, tspan, model, obs_times)
 
 # reconstruct data
@@ -187,13 +246,29 @@ t_plot = np.linspace(tspan[0], tspan[1], 200)
 states_plot = interp1d(times.numpy(), states.numpy(), kind='zero', axis=0)(t_plot)
 
 # plot result 
-plt.plot(t_plot, 100*states_plot[:, 1], '-k')
-plt.plot(t_plot, states_plot[:, 2], '-b')
-plt.plot(t_plot, states_plot[:, 3], '-r')
-plt.plot(obs_times.numpy(), obs.numpy(), 'xk')
-plt.show()
+if plotting:
+    plt.plot(t_plot, 100*states_plot[:, 1], '-k')
+    plt.plot(t_plot, states_plot[:, 2], '-b')
+    plt.plot(t_plot, states_plot[:, 3], '-r')
+    plt.plot(obs_times.numpy(), obs.numpy(), 'xk')
+    plt.show()
 
-# define condtional models 
-# def conditioned_model(data):
-#     return poutine.condition(blocked_model, data={"obs": data})(len(data))
-conditoned = poutine.condition(pyro_ssa, data={'obs': obs})
+# define condtional model
+conditioned = poutine.condition(pyro_ssa, data={'obs_{}'.format(cnt): obs[cnt] for cnt in range(len(obs))})
+trace_cond = poutine.trace(conditioned).get_trace(initial, tspan, model, obs_times)
+
+# # run conditonal model
+# for name, props in trace_cond.nodes.items():
+#     if 'obs' in name:
+#         print(name)
+#         print(props)
+
+# reconstruct data
+tau_cond, reaction_cond, obs_cond = get_event_history(trace_cond.nodes)
+times_cond, states_cond = get_latent_states(tspan[0], initial, tau_cond, reaction_cond, model)
+
+print(obs)
+print(obs_cond)
+
+# set up mcmc
+nuts_kernel = NUTS(model, adapt_step_size=True)
