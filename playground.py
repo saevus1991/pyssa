@@ -81,8 +81,6 @@ def next_event(prop):
     """
     time = torch.sum(prop)
 
-class
-
 
 # naive implementation of pyro ssa with hard coded noise
 def pyro_ssa(initial, tspan, model, obs_times):

@@ -1,8 +1,8 @@
 # kinetic model subclass that allows only reactions up to second order (pair interactions)
 
 # import kinetic model
-import torch
-from models.KineticModel import KineticModel
+import numpy as np
+from pyssa.models.KineticModel import KineticModel
 
 
 class PhysicalKineticModel(KineticModel):
@@ -17,14 +17,14 @@ class PhysicalKineticModel(KineticModel):
     def get_reaction_tensor(self, pre):
         # get order of the individual reactions and number of reactions
         num_reactions, num_species = pre.size()
-        reaction_order = torch.sum(pre, dim=1)
+        reaction_order = np.sum(pre, dim=1)
         # reject if higher order reaction is included
-        if (torch.max(reaction_order) > 2):
+        if (np.max(reaction_order) > 2):
             raise Exception('System should not contain reactions of order larger than two.')
         # set up the outputs
-        zeroth = torch.zeros(num_reactions, dtype=torch.float64)
-        first = torch.zeros([num_reactions, num_species], dtype=torch.float64)
-        second = torch.zeros([num_reactions, num_species, num_species], dtype=torch.float64)
+        zeroth = np.zeros(num_reactions, dtype=torch.float64)
+        first = np.zeros([num_reactions, num_species], dtype=torch.float64)
+        second = np.zeros([num_reactions, num_species, num_species], dtype=torch.float64)
         # iterate over reactions 
         for i in range(num_reactions):
             if reaction_order[i] == 0:
