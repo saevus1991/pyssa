@@ -8,7 +8,7 @@ from scipy.interpolate import interp1d
 
 # custom files
 from pyssa.models.kinetic_model import KineticModel 
-#from pyssa.models.PhysicalKineticModel import PhysicalKineticModel
+from pyssa.models.kinetic_model import PhysicalKineticModel
 import pyssa.models.standard_models as sm
 import pyssa.ssa as ssa
 
@@ -17,7 +17,7 @@ plotting = True
 
 # set up the model
 pre, post, rates = sm.get_standard_model("simple_gene_expression")
-model = KineticModel(np.array(pre), np.array(post), np.array(rates))
+model = PhysicalKineticModel(np.array(pre), np.array(post), np.array(rates))
 
 # prepare initial conditions
 initial = np.array([0.0, 1.0, 0.0, 0.0])
