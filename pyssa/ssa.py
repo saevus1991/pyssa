@@ -16,7 +16,7 @@ class Simulator:
 
     def __init__(self, model, initial, time=0.0):
         self.model = model
-        self.state = initial
+        self.state = model.state2label(initial)
         self.time = time
 
     def next_event(self):
@@ -36,7 +36,7 @@ class Simulator:
     def simulate(self, initial, tspan, get_states=False):
         # prepare state for simulation
         self.time = tspan[0]
-        self.state = initial
+        self.state = self.model.state2label(initial)
         # initialize output
         times = []
         event_hist = []
@@ -61,10 +61,10 @@ class Simulator:
         num_steps = len(trajectory['times'])
         trajectory['states'] = np.zeros([num_steps, dim])
         # fill states
-        state = trajectory['initial']
+        state = self.model.state2label(trajectory['initial'])
         for i in range(num_steps):
             state = self.model.update(state, trajectory['events'][i])
-            trajectory['states'][i, :] = state
+            trajectory['states'][i, :] = self.model.label2state(state)
 
             
 def simulate(model, initial, tspan, get_states=False):

@@ -96,17 +96,17 @@ def assert_squaremat(mat):
     assert(mat.shape[0] == mat.shape[1])
 
 
-def assert_stochmat(mat):
+def assert_stochmat(mat, tol=1e-10):
     """
     Check that mat is a stochastic matrix
     """
     # check square matrix
     assert_squaremat(mat)
     # check row sum zero property
-    row_sum = np.sum(generator, axis=1)
-    assert(np.all(row_sum == 0.0))
+    row_sum = np.sum(mat, axis=1)
+    assert(np.max(np.abs(row_sum)) < tol)
     # check non-negative off-diagonals 
-    q_mat = np.copy(generator)
+    q_mat = np.copy(mat)
     np.fill_diagonal(q_mat, 0.0)
     assert(np.all(q_mat >= 0.0))
 

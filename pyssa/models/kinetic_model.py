@@ -31,14 +31,13 @@ class KineticModel(MJP):
         For a kinetic model, this works on the level of reactions,
         i.e a reaction index is mapped to a state change
         """
-        return(self.stoichiometry[label, :])
+        return(label)
 
     def state2label(self, state):
         """
-        For a kinetic model, this works on the level of reactions,
-        i.e a change vector is mapped to an index
+        For a kinetic model, state and label
         """
-        raise NotImplementedError
+        return(state)
 
     def exit_stats(self, state):
         """
@@ -49,7 +48,12 @@ class KineticModel(MJP):
         prop = self.mass_action(state)*self.rates
         # compute rate and
         rate = prop.sum()
-        return(rate, prop/rate)
+        # catch for absorbing states
+        if rate == 0.0:
+            transition = np.zeros(prop.shape)
+        else:
+            transition = prop/rate
+        return(rate, transition)
 
     def update(self, state, event):
         """
@@ -59,6 +63,13 @@ class KineticModel(MJP):
         return(new_state)
 
     # additional functions
+
+    # def event2change(self, label):
+    #     """
+    #     For a kinetic model, this works on the level of reactions,
+    #     i.e a reaction index is mapped to a state change
+    #     """
+    #     return(self.stoichiometry[label, :])
 
     def mass_action(self, state):
         """
@@ -216,20 +227,23 @@ def kinetic_to_generator(kinetic_model, bounds):
         state = keymap[i]
         # evalute propensity
         rate, props = kinetic_model.exit_stats(state)
-        rates[i] = rate
+        raw_props = rate*props
+        props = raw_props.copy()
         # get target states and store transition element
-        for ind, prop in enumerate(props):
+        for ind, prop in enumerate(raw_props):
             if prop > 0.0:
                 target = kinetic_model.update(state, ind)
                 try:
                     label = reversemap[target.tobytes()]
                     row_ind.append(i)
                     col_ind.append(label)
-                    val.append(prop)
                 except KeyError:
+                    props[ind] = 0.0
                     pass
                     #print('Transition rate '+str(state)+'->'+str(target)+' set to zero.')
+        rates[i] = props.sum()
+        val += list(props[props > 0.0]/props.sum())
     # construct sparse generator
-    generator = sparse.csr_matrix((val, (row_ind, col_ind)), shape=(num_states, num_states))
-    return(rates, generator)
+    transition = sparse.csr_matrix((val, (row_ind, col_ind)), shape=(num_states, num_states))
+    return(rates, transition, keymap)
 
