@@ -36,7 +36,7 @@ class Simulator:
     def simulate(self, initial, tspan, get_states=False):
         # prepare state for simulation
         self.time = tspan[0]
-        self.initial = initial
+        self.state = initial
         # initialize output
         times = []
         event_hist = []
@@ -65,6 +65,17 @@ class Simulator:
         for i in range(num_steps):
             state = self.model.update(state, trajectory['events'][i])
             trajectory['states'][i, :] = state
+
+            
+def simulate(model, initial, tspan, get_states=False):
+    """
+    Wrapper that allows simulation without explicitly constructing the simulator object
+    """
+    # set up model
+    sim = Simulator(model, initial, tspan[0])
+    # run simulation 
+    trajecotry - sim.simulate(initial, tspan)
+    return(trajectory)
 
 
 def discretize_trajectory(trajectory, sample_times):

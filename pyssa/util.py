@@ -9,6 +9,15 @@ import numpy as np
 # from collections import namedtuple
 
 
+def falling_factorial(n, k):
+    if (n < k):
+        return(0)
+    else:
+        res = 1.0
+        for i in range(k):
+            res *= n-i
+        return(res)
+
 def sample_discrete(weights, size=1, axis=0, keepdims=False, binsearch=True):
     """
     Generates samples from a set of discrete distributions.
@@ -73,3 +82,52 @@ def sample_discrete(weights, size=1, axis=0, keepdims=False, binsearch=True):
             x = int(x)
 
     return x
+
+
+def assert_squaremat(mat):
+    """
+    Check that mat is a square matrix
+    """
+    # confirm numpy array
+    assert(type(mat) is np.ndarray)
+    # confirm 2 dimensions
+    assert(mat.ndim == 2)
+    # confirm quardatic
+    assert(mat.shape[0] == mat.shape[1])
+
+
+def assert_stochmat(mat):
+    """
+    Check that mat is a stochastic matrix
+    """
+    # check square matrix
+    assert_squaremat(mat)
+    # check row sum zero property
+    row_sum = np.sum(generator, axis=1)
+    assert(np.all(row_sum == 0.0))
+    # check non-negative off-diagonals 
+    q_mat = np.copy(generator)
+    np.fill_diagonal(q_mat, 0.0)
+    assert(np.all(q_mat >= 0.0))
+
+
+def assert_ratemat(mat):
+    # check square matrix
+    assert_squaremat(mat)
+    # check diagonal is zero
+    assert(np.all(mat.diagonal() == 0.0))
+    # check non-negative elements
+    assert(np.all(q_mat >= 0.0))
+
+
+def assert_transmat(mat):
+    """
+    Check that mat is a stochastic matrix
+    """
+    # check square matrix
+    assert_squaremat(mat)
+    # check row sum one property
+    row_sum = np.sum(generator, axis=1)
+    assert(np.all(row_sum == 1.0))
+    # check non-negative elements
+    assert(np.all(mat >= 0.0))
