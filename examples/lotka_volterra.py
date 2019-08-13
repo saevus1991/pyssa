@@ -12,6 +12,7 @@ from pyssa.models.kinetic_model import KineticModel
 from pyssa.models.kinetic_model import PhysicalKineticModel
 from pyssa.models.kinetic_model import SparseKineticModel
 from pyssa.models.kinetic_model import kinetic_to_generator
+from pyssa.models.reaction_model import ReactionModel
 from pyssa.models.ctmc import CTMC
 from pyssa.models.ctmc import SparseCTMC
 import pyssa.models.standard_models as sm
@@ -38,6 +39,17 @@ generator = rate_mat -exit_rates
 #print(np.sum(generator, axis=1))
 model_ctmc = CTMC((exit_rates, embedded.toarray()), keymap, form='embedded')
 model_sparse_ctmc = SparseCTMC((exit_rates, embedded), keymap, form='embedded')
+
+# build prop function manually
+def propfun(state):
+    """
+    Compute propensity for a lotka volterra model
+    """
+    prop = np.array([state[0], state[0]*state[1], state[0]*state[1], state[1]])
+    return(prop)
+
+# implement lotka volterra as reaction model
+model_reaction = ReactionModel(np.array(post)-np.array(pre), propfun, np.array(rates))
 
 # prepare initial conditions
 initial = np.array([25.0, 5.0])
@@ -77,9 +89,15 @@ for i in range(iter):
     simulator.simulate(initial, tspan)
 end = time.time()
 print('Sparse CTMC approximation required '+str(end-start)+' seconds.')
+simulator = ssa.Simulator(model_reaction, initial)
+start = time.time()
+for i in range(iter):
+    simulator.simulate(initial, tspan)
+end = time.time()
+print('Reaction model required '+str(end-start)+' seconds.')
 
 # get trajectory 
-simulator = ssa.Simulator(model_sparse_ctmc, initial)
+simulator = ssa.Simulator(model_reaction, initial)
 trajectory = simulator.simulate(initial, tspan)
 # simulator = ssa.Simulator(model_sparse, initial)
 # trajectory = simulator.simulate(initial, tspan)
