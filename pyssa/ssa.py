@@ -4,7 +4,7 @@
 import numpy as np
 import pyssa.util as ut
 from scipy.interpolate import interp1d
-import warnings
+import time
 
 
 class Simulator:
@@ -79,7 +79,7 @@ def simulate(model, initial, tspan, get_states=False):
     # set up model
     sim = Simulator(model, initial, tspan[0])
     # run simulation 
-    trajecotry - sim.simulate(initial, tspan)
+    trajecotry = sim.simulate(initial, tspan)
     return(trajectory)
 
 
@@ -95,3 +95,33 @@ def discretize_trajectory(trajectory, sample_times):
     states = np.concatenate([trajectory['initial'].reshape(1, -1), trajectory['states']])
     sample_states = interp1d(times, states, kind='zero', axis=0)(sample_times)
     return(sample_states)
+
+
+def sample(model, initial, sample_times, num_samples=1, output='full'):
+    """
+    Draw num_samples samples from the model for a given initial
+    Discretize the trajectories over the grid sample_times
+    Store in an num_samples x times x num_speies array
+    """
+    # set up output
+    samples = np.zeros((num_samples, len(sample_times), len(initial)))
+    # get tspan
+    tspan = np.array([sample_times[0], sample_times[-1]])
+    # set up model
+    sim = Simulator(model, initial, tspan[0])
+    start = time.time()
+    for i in range(num_samples):
+        # run simulation 
+        trajectory = sim.simulate(initial, tspan, get_states=True)
+        # discretize
+        sample_states = discretize_trajectory(trajectory, sample_times)
+        # store in output array
+        samples[i, :, :] = sample_states
+    end = time.time()
+    print('Generated {0} samples in {1} seconds.'.format(num_samples, end-start))
+    if output == 'full':
+        return(samples)
+    elif output == 'avg':
+        return(np.mean(samples, axis=0).squeeze())
+    else:
+        raise ValueError('Unknown value '+output+' for option output.')

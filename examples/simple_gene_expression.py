@@ -17,7 +17,7 @@ plotting = True
 
 # set up the model
 pre, post, rates = sm.get_standard_model("simple_gene_expression")
-model = PhysicalKineticModel(np.array(pre), np.array(post), np.array(rates))
+model = KineticModel(np.array(pre), np.array(post), np.array(rates))
 
 # prepare initial conditions
 initial = np.array([0.0, 1.0, 0.0, 0.0])
@@ -36,10 +36,20 @@ simulator.events2states(trajectory)
 t_plot = np.linspace(tspan[0], tspan[1], 200)
 states_plot = ssa.discretize_trajectory(trajectory, t_plot)
 
+# get mean
+states_avg = ssa.sample(model, initial, t_plot, num_samples=10, output='avg')
+print(states_avg.shape)
+
 # plot result 
 if plotting:
     plt.plot(t_plot, 100*states_plot[:, 1], '-k')
     plt.plot(t_plot, states_plot[:, 2], '-b')
     plt.plot(t_plot, states_plot[:, 3], '-r')
+    #plt.plot(obs_times.numpy(), obs.numpy(), 'xk')
+    plt.show()
+
+    plt.plot(t_plot, 100*states_avg[:, 1], '-k')
+    plt.plot(t_plot, states_avg[:, 2], '-b')
+    plt.plot(t_plot, states_avg[:, 3], '-r')
     #plt.plot(obs_times.numpy(), obs.numpy(), 'xk')
     plt.show()
