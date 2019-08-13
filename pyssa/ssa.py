@@ -4,6 +4,7 @@
 import numpy as np
 import pyssa.util as ut
 from scipy.interpolate import interp1d
+import warnings
 
 
 class Simulator:
@@ -26,8 +27,12 @@ class Simulator:
         # compute exit rate and target state probabilities
         rate, prob = self.model.exit_stats(self.state)
         # draw time and event index
-        tau = -np.log(np.random.rand())/rate
-        event = ut.sample_discrete(prob)
+        if rate == 0.0:
+            tau = np.inf
+            event = None
+        else:
+            tau = -np.log(np.random.rand())/rate
+            event = ut.sample_discrete(prob)
         # update time and state
         self.time += tau
         self.state = self.model.update(self.state, event)

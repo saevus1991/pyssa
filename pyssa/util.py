@@ -120,14 +120,14 @@ def assert_ratemat(mat):
     assert(np.all(q_mat >= 0.0))
 
 
-def assert_transmat(mat):
+def assert_transmat(mat, tol=1e-10):
     """
     Check that mat is a stochastic matrix
     """
     # check square matrix
     assert_squaremat(mat)
     # check row sum one property
-    row_sum = np.sum(generator, axis=1)
-    assert(np.all(row_sum == 1.0))
+    row_sum = np.sum(mat, axis=1)
+    assert(np.max(np.abs(row_sum-1.0)) < tol)
     # check non-negative elements
     assert(np.all(mat >= 0.0))

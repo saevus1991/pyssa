@@ -242,7 +242,13 @@ def kinetic_to_generator(kinetic_model, bounds):
                     pass
                     #print('Transition rate '+str(state)+'->'+str(target)+' set to zero.')
         rates[i] = props.sum()
-        val += list(props[props > 0.0]/props.sum())
+        eff_props = props[props > 0.0]
+        if len(eff_props) > 0:
+            val += list(props[props > 0.0]/props.sum())
+        else:
+            row_ind.append(i)
+            col_ind.append(i)
+            val.append(1.0)
     # construct sparse generator
     transition = sparse.csr_matrix((val, (row_ind, col_ind)), shape=(num_states, num_states))
     return(rates, transition, keymap)

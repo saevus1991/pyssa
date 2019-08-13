@@ -4,7 +4,7 @@
 import numpy as np
 from pyssa.models.mjp import MJP
 import pyssa.util as ut
-
+import scipy.sparse
 
 class CTMC(MJP):
     """
@@ -69,6 +69,9 @@ class CTMC(MJP):
         - a tuple of size 2 containing an exit rate vector and the embedded matrix
         """
         if form == 'full':
+            """
+            assumes generator is a csr_matrix
+            """
             # check that generator matches expected form
             ut.assert_stochmat(generator)
             # get exit rates
@@ -95,6 +98,8 @@ class CTMC(MJP):
             # copy rates and embeded transition matrix
             exit_rates = generator[0].copy()
             transition = generator[1].copy()
+        else:
+            ValueError('Unkown form argument '+form)
         return(exit_rates, transition)
 
     def get_reversemap(self):
@@ -105,8 +110,71 @@ class CTMC(MJP):
             return(reversemap)
 
 
-# class SparseCTMC:
-#     """
-#     Sparse version of ctmc class where the embedded chain transition
-#     matrix is stored as a sparse csr_matrix
-#     """
+class SparseCTMC(CTMC):
+    """
+    Sparse version of ctmc class where the embedded chain transition
+    matrix is stored as a sparse csr_matrix
+    """
+
+    def exit_stats(self, state):
+        """
+        Returns the exit rate corresponding to the current state
+        and an array containing a probability distribution over target states
+        """
+        # compute raw mass action propensity
+        prop = self.embedded[state][1]
+        # compute rate and
+        rate = self.exit_rates[state]
+        return(rate, prop)
+
+    def update(self, state, event):
+        """
+        For a sparse ctmc the event index corresponds to the corresponding state with non-zero transition
+        """
+        return(self.embedded[state][0][event])
+
+    def get_transition(self, generator, form):
+        """ Construct an exit rate vector and the embedded transition matrix 
+        from generator Generator can be 
+        - a (num_states x num_states) rate matrix with diagonals zero
+        - a tuple of size 2 containing an exit rate vector and the embedded matrix
+        """
+        if form == 'full':
+            # check that generator matches expected form
+            #ut.assert_stochmat(generator)
+            # get exit rates
+            exit_rates = generator.diagonal()
+            # set up matrix
+            transition = []
+            for row in generator:
+                ind = row.nonzero()[1]
+                val = row.data/row.data.sum()
+                transition.append([ind, val])
+        elif form == 'rates':
+            # check generator
+            #ut.assert_ratemat(generator)
+            # get exit rates
+            exit_rates = generator.sum(axis=1).A1
+            # set up matrix
+            transition = []
+            for row in generator:
+                ind = row.nonzero()[1]
+                val = row.data/row.data.sum()
+                transition.append([ind, val])
+        elif form == 'embedded':
+            # check stuff
+            #assert(type(generator) == tuple)
+            #assert(len(generator) == 2)
+            #assert(np.all(generator[0] >= 0.0))
+            #ut.assert_transmat(generator[1])
+            # copy rates and embeded transition matrix
+            exit_rates = generator[0].copy()
+            transition = generator[1].copy()
+            transition = []
+            for row in generator[1]:
+                ind = row.nonzero()[1]
+                val = row.data
+                transition.append([ind, val])
+        else:
+            ValueError('Unkown form argument '+form)
+        return(exit_rates, transition)
