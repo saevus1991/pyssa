@@ -131,3 +131,27 @@ def assert_transmat(mat, tol=1e-10):
     assert(np.max(np.abs(row_sum-1.0)) < tol)
     # check non-negative elements
     assert(np.all(mat >= 0.0))
+
+
+def softmax_stepfun(time, time_grid, vals, inv_temp):
+    """ 
+    compute a softmax type interpolation of a function defined on a time_grid
+    """
+    centered_grid = time_grid[0:-1]
+    arg = inv_temp*(time-centered_grid)**2
+    weights = np.exp(-arg)
+    weights = weights/np.sum(weights)
+    return(np.sum(weights*vals))
+
+
+def sigmoid(x):
+    return(1/(1+np.exp(-x)))
+
+def logistic_stepfun(time, time_grid, vals, inv_temp):
+    # compute sigmoid weights
+    arg = inv_temp*(time-time_grid[:-1])
+    weights = sigmoid(arg)
+    # convert to increments and multiply
+    increments = vals-np.concatenate([np.array([0.0]), vals[:-1]])
+    # return weighted sum of increments
+    return(np.sum(weights*increments))

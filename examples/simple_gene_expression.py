@@ -5,6 +5,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d
+import profile
 
 # custom files
 from pyssa.models.kinetic_model import KineticModel 
@@ -13,7 +14,7 @@ import pyssa.models.standard_models as sm
 import pyssa.ssa as ssa
 
 # activate or deactivate plotting
-plotting = True
+plotting = False
 
 # set up the model
 pre, post, rates = sm.get_standard_model("simple_gene_expression")
