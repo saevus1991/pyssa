@@ -9,6 +9,7 @@ from scipy.interpolate import interp1d
 # custom files
 from pyssa.models.reaction_model import ReactionModel 
 from pyssa.models.reaction_model import BaseReactionModel 
+from pyssa.models.jit_kinetic_model import KineticModel as jitKinetic
 import pyssa.models.standard_models as sm
 import pyssa.ssa as ssa
 from numba import jit, jitclass, int32, float64
@@ -78,6 +79,8 @@ model = ReactionModel(np.array(post)-np.array(pre), propfun, np.array(rates))
 stoichiometry = (np.array(post)-np.array(pre)).astype('float64')
 model2 = GeneExpression(stoichiometry, np.array(rates))
 
+model3 = jitKinetic(np.array(pre, dtype='float64'), np.array(post, dtype='float64'), np.array(rates, dtype='float64'))
+
 # prepare initial conditions
 initial = np.array([0.0, 1.0, 0.0, 0.0])
 tspan = np.array([0.0, 3e3])
@@ -88,15 +91,21 @@ obs_times = np.arange(tspan[0]+0.5*delta_t, tspan[1], delta_t)
 simulator = ssa.Simulator(model, initial)
 
 # get trajectory 
-trajectory = simulator.simulate(initial, tspan)
-simulator.events2states(trajectory)
+#trajectory = simulator.simulate(initial, tspan)
+#simulator.events2states(trajectory)
+start = time.time()
+N = 10
+for i in range(N):
+    trajectory = model3.simulate(initial.astype('float64'), tspan.astype('float64'))
+stop = time.time()
+print('Generated {0} samples in {1} seconds.'.format(N, stop-start))
 
 # get a subsampling for plotting
 t_plot = np.linspace(tspan[0], tspan[1], 200)
 states_plot = ssa.discretize_trajectory(trajectory, t_plot)
 
 # get mean
-states_avg = ssa.sample(model, initial, t_plot, num_samples=100, output='avg')
+states_avg = ssa.sample(model, initial, t_plot, num_samples=1, output='avg')
 print(states_avg.shape)
 
 # plot result 
@@ -107,8 +116,8 @@ if plotting:
     #plt.plot(obs_times.numpy(), obs.numpy(), 'xk')
     plt.show()
 
-    plt.plot(t_plot, 100*states_avg[:, 1], '-k')
-    plt.plot(t_plot, states_avg[:, 2], '-b')
-    plt.plot(t_plot, states_avg[:, 3], '-r')
-    #plt.plot(obs_times.numpy(), obs.numpy(), 'xk')
-    plt.show()
+    # plt.plot(t_plot, 100*states_avg[:, 1], '-k')
+    # plt.plot(t_plot, states_avg[:, 2], '-b')
+    # plt.plot(t_plot, states_avg[:, 3], '-r')
+    # #plt.plot(obs_times.numpy(), obs.numpy(), 'xk')
+    # plt.show()

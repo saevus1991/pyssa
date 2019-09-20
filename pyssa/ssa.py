@@ -83,7 +83,7 @@ def simulate(model, initial, tspan, get_states=False):
     return(trajectory)
 
 
-def discretize_trajectory(trajectory, sample_times):
+def discretize_trajectory(trajectory, sample_times, obs_model=None):
     """ 
     Discretize a trajectory of a jump process by linear interpolation 
     at the support points given in sample times
@@ -94,6 +94,13 @@ def discretize_trajectory(trajectory, sample_times):
     times = np.concatenate([trajectory['tspan'][0:1], trajectory['times']])
     states = np.concatenate([trajectory['initial'].reshape(1, -1), trajectory['states']])
     sample_states = interp1d(times, states, kind='zero', axis=0)(sample_times)
+    if obs_model is not None:
+        test = obs_model.sample(states[0], sample_times[0])
+        obs_dim = len(obs_model.sample(states[0], sample_times[0]))
+        obs_states = np.zeros((sample_states.shape[0], obs_dim))
+        for i in range(len(sample_times)):
+            obs_states[i] = obs_model.sample(sample_states[i], sample_times[i])
+        sample_states = obs_states
     return(sample_states)
 
 
