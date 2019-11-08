@@ -11,3 +11,9 @@ class Diffusion(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_dimension(self):
+        """
+        dimension of the diffusion matrix
+        """
+        pass

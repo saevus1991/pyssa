@@ -96,7 +96,7 @@ def discretize_trajectory(trajectory, sample_times, obs_model=None):
     sample_states = interp1d(times, states, kind='zero', axis=0)(sample_times)
     if obs_model is not None:
         test = obs_model.sample(states[0], sample_times[0])
-        obs_dim = len(obs_model.sample(states[0], sample_times[0]))
+        obs_dim = (obs_model.sample(states[0], sample_times[0])).size
         obs_states = np.zeros((sample_states.shape[0], obs_dim))
         for i in range(len(sample_times)):
             obs_states[i] = obs_model.sample(sample_states[i], sample_times[i])
