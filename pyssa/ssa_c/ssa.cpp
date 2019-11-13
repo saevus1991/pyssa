@@ -3,7 +3,7 @@
 #include <iostream>
 #include <cmath>
 
-void plus(double *arg1, double* arg2, unsigned n);
+void plus(double *a, double* b, double *c, unsigned n);
 
 static PyObject *array_plus(PyObject *self, PyObject *args)
 {
@@ -28,7 +28,7 @@ static struct PyModuleDef spammodule = {
     PyModuleDef_HEAD_INIT,
     "spam",   /* name of module */
     "spam_doc", /* module documentation, may be NULL */
-    -1,       /* size of per-interpreter state of the module,
+    -1,       /* size of per-interpreter state of the module
                  or -1 if the module keeps state in global variables. */
     SpamMethods
 };
@@ -41,18 +41,40 @@ PyInit_spam(void)
 
 int main() {
 
-    // create a c array
+    // init arrays
     unsigned n = 10;
-    double a[10];
+    double *a;
+    a = (double *) malloc(n*sizeof(double));
+    double *b;
+    b = (double *) malloc(n*sizeof(double));
+    double *c;
+    c = (double *) malloc(n*sizeof(double));
+
+    // test numpy array
+    numpyArray<double,3> a
+
+    // fill a and b
     for (int i = 0; i < n; i++) {
         a[i] = i*i;
-        std::cout << a[i] << std::endl;
+        b[i] = 100-i;
     }
+
+    // add both arrays
+    plus(a, b, c, n);
+
+    // print result
+    for (int i = 0; i < n; i++) {
+        std::cout << c[i] << std::endl;
+    }
+
+    free(a);
+    free(b);
+    free(c);
 
 }
 
-void plus(double *arg1, double* arg2, double *output, unsigned n) {
+void plus(double *a, double* b, double *c, unsigned n) {
     for (int i = 0; i < n; i++) {
-        std::cout << *arg1 << std::endl;
+        c[i] = a[i] + b[i];
     }
 }
