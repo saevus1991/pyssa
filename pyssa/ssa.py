@@ -15,12 +15,19 @@ class Simulator:
     probabilities of the embeded chain.
     """
 
-    def __init__(self, model, initial, time=0.0):
+    def __init__(self, model, initial, time=0.0, mode='homogenous'):
         self.model = model
         self.state = model.state2label(initial)
         self.time = time
+        self.mode = mode
+        if mode == 'homogenous':
+            self.next_event = self.next_event_homogenous
+        elif mode == 'non-homogenous':
+            self.next_event = self.next_event_nonhomogenous
+        else:
+            raise ValueError('Unrecognized option ' + mode)
 
-    def next_event(self):
+    def next_event_homogenous(self):
         """ 
         simulte next event
         """
@@ -33,6 +40,17 @@ class Simulator:
         else:
             tau = -np.log(np.random.rand())/rate
             event = ut.sample_discrete(prob)
+        # update time and state
+        self.time += tau
+        self.state = self.model.update(self.state, event)
+        return(event)
+
+    def next_event_nonhomogenous(self):
+        """ 
+        simulte next event
+        """
+        # compute waiting time and new event
+        tau, event = self.model.next_event(self.state, self.time)
         # update time and state
         self.time += tau
         self.state = self.model.update(self.state, event)
@@ -132,3 +150,34 @@ def sample(model, initial, sample_times, num_samples=1, output='full'):
         return(np.mean(samples, axis=0).squeeze())
     else:
         raise ValueError('Unknown value '+output+' for option output.')
+
+def posterior_probability(trajectory, model, obs_model, obs_times, obs_data):
+    """
+    Evaluate the posterior likelihood under the model
+    """
+    # preparatioin
+    llh = 0.0
+    state = trajectory['initial']
+    time = trajectory['tspan'][0]
+    # iterate over events
+    for ind in range(len(trajectory['times'])):
+        if trajectory['times'][ind] < trajectory['tspan'][1]:
+            # evaluate propensity of the current state
+            rate, prob = model.exit_stats(state)
+            event = trajectory['events'][ind]
+            # evaluate reaction contribution
+            llh += np.log(rate) + np.log(prob[event])
+            # evaluate waiting time contribution
+            llh += -rate*(trajectory['times'][ind]-time)
+            # update state
+            time = trajectory['times'][ind]
+            state = trajectory['states'][ind]
+    # terminal waiting time contribution waiting time contribution
+    rate, prob = model.exit_stats(state)
+    llh += -rate*(trajectory['tspan'][1]-time)
+    # observation contribution
+    states_obs = ssa.discretize_trajectory(trajectory, obs_times)
+    for (t_obs, obs, state) in zip(obs_times, obs_data, states_obs):
+        x = 1
+        #llh += obs_model.llh(state, t_obs, obs)
+    return(llh)
