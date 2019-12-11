@@ -65,7 +65,6 @@ obs_model = LognormGauss(np.array(obs_param), np.array(alpha), var_reg=0.2)
 trajectory = simulator.simulate(initial, tspan)
 simulator.events2states(trajectory)
 
-
 def posterior_probability(trajectory, model, obs_model, obs_times, obs_data):
     """
     Evaluate the posterior likelihood under the model

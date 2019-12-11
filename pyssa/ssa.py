@@ -176,8 +176,7 @@ def posterior_probability(trajectory, model, obs_model, obs_times, obs_data):
     rate, prob = model.exit_stats(state)
     llh += -rate*(trajectory['tspan'][1]-time)
     # observation contribution
-    states_obs = ssa.discretize_trajectory(trajectory, obs_times)
+    states_obs = discretize_trajectory(trajectory, obs_times)
     for (t_obs, obs, state) in zip(obs_times, obs_data, states_obs):
-        x = 1
-        #llh += obs_model.llh(state, t_obs, obs)
+        llh += obs_model.llh(state, t_obs, obs)
     return(llh)
