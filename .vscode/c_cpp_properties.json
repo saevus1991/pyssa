@@ -4,7 +4,8 @@
             "name": "Mac",
             "includePath": [
                 "${workspaceFolder}/**",
-                "/Users/christian/.pyenv/versions/3.7.4/include/python3.7m"
+                "/Users/christian/.pyenv/versions/3.7.4/include/python3.7m",
+                "/Users/christian/.pyenv/versions/3.7.4/envs/pymbvi/lib/python3.7/site-packages/numpy/core/include"
             ],
             "defines": [],
             "macFrameworkPath": [
@@ -12,8 +13,8 @@
             ],
             "compilerPath": "/usr/bin/clang",
             "intelliSenseMode": "clang-x64",
-            "cStandard": "c11",
-            "cppStandard": "c++17"
+            "cppStandard": "c++17",
+            "cStandard": "c11"
         }
     ],
     "version": 4

@@ -1,6 +1,7 @@
 # ssa class
 
 #import
+import sys
 import numpy as np
 import pyssa.util as ut
 from scipy.interpolate import interp1d
@@ -150,6 +151,37 @@ def sample(model, initial, sample_times, num_samples=1, output='full'):
         return(np.mean(samples, axis=0).squeeze())
     else:
         raise ValueError('Unknown value '+output+' for option output.')
+
+def sample_compiled(simulate, sample_times, num_samples=1, output='full'):
+    """
+    Draw num_samples samples from the model for a given initial
+    Discretize the trajectories over the grid sample_times
+    Store in an num_samples x times x num_speies array
+    """
+    start = time.time()
+    # get tspan
+    tspan = np.array([sample_times[0], sample_times[-1]])
+    # run simulation 
+    trajectory = simulate(tspan)
+    # set up output
+    samples = np.zeros((num_samples, len(sample_times), len(trajectory['initial'])))
+    # set up model
+    for i in range(num_samples):
+        # run simulation 
+        trajectory = simulate(tspan)
+        # discretize
+        sample_states = discretize_trajectory(trajectory, sample_times)
+        # store in output array
+        samples[i, :, :] = sample_states
+    end = time.time()
+    print('Generated {0} samples in {1} seconds.'.format(num_samples, end-start))
+    if output == 'full':
+        return(samples)
+    elif output == 'avg':
+        return(np.mean(samples, axis=0).squeeze())
+    else:
+        raise ValueError('Unknown value '+output+' for option output.')
+
 
 def posterior_probability(trajectory, model, obs_model, obs_times, obs_data):
     """
