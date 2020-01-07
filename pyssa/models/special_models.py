@@ -80,6 +80,87 @@ class TASEP(MJP):
         return(prop)
 
 
+class BurstingTASEP(MJP):
+    """
+    Implementation of the Tasep model with additional active/inactive state
+    change vector stored in the stoichiometry matrix and an arbitrary propensity functor
+    """
+
+    # implementation of abstract methods
+
+    def __init__(self, num_sites, rates):
+        """
+        Class for a basic tasep process. Requires the number of sites and an array of rate constants
+        """
+        self.num_sites = num_sites
+        self.rates = rates
+        self.stoichiometry = self.get_stoichiometry()
+
+    def label2state(self, label):
+        """
+        Map a reaction index to a state change
+        """
+        return(label)
+
+    def state2label(self, state):
+        """
+        For a kinetic model, this works on the level of reactions,
+        i.e a change vector is mapped to an index
+        """
+        return(state)
+
+    def exit_stats(self, state):
+        """
+        Returns the exit rate corresponding to the current state
+        and an array containing a probability distribution over target states
+        """
+        # compute raw mass action propensity
+        prop = self.propfun(state)
+        prop[0] *= self.rates[0]
+        prop[1] *= self.rates[1]
+        prop[2] *= self.rates[2]
+        prop[3:-1] *= self.rates[3]
+        prop[-1] *= self.rates[4]
+        # compute rate and
+        rate = prop.sum()
+        return(rate, prop/rate)
+
+    def update(self, state, event):
+        """
+        Update the state using the current reaction index
+        """
+        new_state = state+self.stoichiometry[event]
+        return(new_state)
+
+    # additional functions
+
+    def get_stoichiometry(self):
+        """
+        Compute stoichiometry matrix for basic tasep model
+        """
+        # construct matrix
+        stoichiometry = np.zeros((self.num_sites+2, self.num_sites))
+        # switching contribution
+        stoichiometry[0, 0] = 1
+        stoichiometry[1, 0] = -1
+        # set increase
+        ind = np.array([i for i in range(self.num_sites-1)], dtype=int)
+        stoichiometry[ind+2, ind+1] = 1
+        # set decrease
+        stoichiometry[ind+3, ind+1] = -1
+        return(stoichiometry)
+
+    def propfun(self, state):
+        """ 
+        reaction i is possible whenever site i is empty and site i-1 is occupied
+        """
+        prop = np.zeros(len(state)+2)
+        prop[0] = 1.0-state[0]
+        prop[1] = state[0]
+        prop[2:-1] = state[0:-1]*(1.0-state[1:])
+        prop[-1] = state[-1]
+        return(prop)
+
 class TASEP_Timedep(MJP):
     """
     Implementation of the Tasep model for time dependent rates
