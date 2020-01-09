@@ -42,7 +42,7 @@ def predator_prey(*args):
 
     return(pre, post, rates)
 
-
+# totatlly asymmetric exclusion process
 def tasep(*args):
 
     if len(args) == 2:
@@ -61,6 +61,27 @@ def tasep(*args):
     obs_param = [80.0, 100.0, 0.001, 10.0, 0.2]
 
     return(alpha, rates, obs_param)
+    
+# totatlly asymmetric exclusion process
+def bursting_tasep(*args):
+
+    if len(args) == 2:
+        L = args[0]
+        num_stems = args[1]
+    else:
+        L = 48
+        num_stems = 14
+
+    alpha1 = [i for i in range(num_stems)]
+    alpha2 = [num_stems for i in range(L-num_stems)]
+    alpha = alpha1+alpha2
+
+    rates = [0.21, 0.51, 0.28, 0.5, 0.5]
+
+    obs_param = [80.0, 100.0, 0.001, 10.0, 0.2]
+
+    return(alpha, rates, obs_param)
+
 
 ## getter function
 
@@ -69,6 +90,7 @@ def get_standard_model(ident, *args):
     models = {
         "simple_gene_expression": simple_gene_expression,
         "predator_prey": predator_prey,
-        "tasep": tasep
+        "tasep": tasep,
+        "bursting_tasep": bursting_tasep
     }
     return(models.get(ident)(args))
