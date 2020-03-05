@@ -110,8 +110,13 @@ def discretize_trajectory(trajectory, sample_times, obs_model=None):
         trajectory: a dict with keys 'initial', 'tspan', 'times', 'states'
         sample_times: np.array containin the sample times
     """
-    times = np.concatenate([trajectory['tspan'][0:1], trajectory['times']])
-    states = np.concatenate([trajectory['initial'].reshape(1, -1), trajectory['states']])
+    if (trajectory['times'][-1] < trajectory['tspan'][1]):
+        delta = (trajectory['tspan'][1]-trajectory['tspan'][0])/1e-3
+        times = np.concatenate([trajectory['tspan'][0:1], trajectory['times'], trajectory['tspan'][1:]+delta])
+        states = np.concatenate([trajectory['initial'].reshape(1, -1), trajectory['states'], trajectory['states'][-1:, :]])
+    else:
+        times = np.concatenate([trajectory['tspan'][0:1], trajectory['times']])
+        states = np.concatenate([trajectory['initial'].reshape(1, -1), trajectory['states']])
     sample_states = interp1d(times, states, kind='zero', axis=0)(sample_times)
     if obs_model is not None:
         test = obs_model.sample(states[0], sample_times[0])

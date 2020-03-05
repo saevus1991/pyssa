@@ -4,7 +4,7 @@ test compiled gillespie for mass action models with the standard gene expression
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
-import pyssa.gillespie as gillespie
+import pyssa.ssa_compiled.gillespie as gillespie
 from pyssa.models.standard_models import get_standard_model
 import pyssa.ssa as ssa
 
@@ -25,6 +25,7 @@ seed = np.random.randint(2**16)
 
 # get trajectory 
 trajectory = gillespie.simulate(pre, post, rates, initial, tspan, seed)
+print(trajectory['times'][-10:])
 
 # get a subsampling for plotting
 t_plot = np.linspace(tspan[0], tspan[1], 200)
