@@ -17,7 +17,7 @@ import scipy.integrate as quad
 #from pyssa.models.special_models import TASEP
 import pyssa.models.standard_models as sm
 import pyssa.ssa as ssa
-from pyssa.models.kinetic_model import KineticModel 
+from pyssa.models.kinetic_model import KineticsModel 
 
 # include pymbvi
 pymbvi_path = '/Users/christian/Documents/Code/pymbvi'

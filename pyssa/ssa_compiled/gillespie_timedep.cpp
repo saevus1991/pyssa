@@ -38,10 +38,10 @@ void PyArray_FromVector(PyObject *target, const std::vector<double> &source) {
 static PyObject *PyArray_NewFromVector(const std::vector<double> &source, std::vector<npy_intp> &dims);
 static PyObject *PyArray_NewFromVector(const std::vector<double> &source);
 
-void gillespie_fun(system_model &sys, std::vector<double> &time, std::vector<double> &events, std::vector<double> &stats);
+void gillespie_fun(system_model &sys, std::vector<double> &time, std::vector<double> &events, std::vector<double> &stats, double *llh);
 void update_propensity(std::vector<double> &propensity, std::vector<double> &state, const system_model &sys);
 inline double comb_factor (int n, int k);
-bool next_reaction(double *t, int *t_index, int *index, const system_model &sys, const std::vector<double> &propensity, const std::vector<double> &internal_time, std::vector<double> &stats);
+bool next_reaction(double *t, int *t_index, int *index, const system_model &sys, const std::vector<double> &propensity, const std::vector<double> &internal_time, std::vector<double> &stats, double *reaction_llh);
 void update_state(std::vector<double> &state,int index,const system_model &sys);
 void construct_trajectory(const system_model &sys,const std::vector<double> events, std::vector<double> &trajectory);
 void update_total_propensity(std::vector<double> &total_propensity, const std::vector<double> &propensity, system_model &sys, double delta_t );
@@ -169,9 +169,10 @@ static PyObject *simulate(PyObject *self, PyObject *args) {
     events.reserve(size_estimate);
     std::vector<double> total_propensity(sys.num_reactions);
     std::vector<double> stats(sys.num_reactions);
+    double llh = 0.0;
     
     // perform calculation
-    gillespie_fun(sys, time, events, stats);
+    gillespie_fun(sys, time, events, stats, &llh);
     
     // // create output matrix for time
     // plhs[0] = mxCreateDoubleMatrix(1,time.size(),mxREAL);
@@ -200,13 +201,20 @@ static PyObject *simulate(PyObject *self, PyObject *args) {
     state_history_dims[1] = num_species;  
     PyObject *state_history_out = PyArray_NewFromVector(state_history, state_history_dims);
 
+    // compute log likelihood
+    //double llh = 0.0;
+    for (int i = 0; i < stats.size(); i++) {
+        llh -= stats[i];
+    }
+
     // construct output dictionary
-    PyObject *sample = Py_BuildValue("{s:O,s:O,s:O,s:O,s:O}",
+    PyObject *sample = Py_BuildValue("{s:O,s:O,s:O,s:O,s:O,s:d}",
                      "initial", initial_out,
                      "tspan", tspan_out,
                      "times", time_out,
                      "events", events_out,
-                     "states", state_history_out);
+                     "states", state_history_out,
+                     "llh", llh);
 
     // clean up
     Py_DECREF(pre);
@@ -274,7 +282,7 @@ static PyObject *PyArray_NewFromVector(const std::vector<double> &source) {
     return(target);
 }
 
-void gillespie_fun(system_model &sys, std::vector<double> &time,std::vector<double> &events, std::vector<double> &stats) {
+void gillespie_fun(system_model &sys, std::vector<double> &time,std::vector<double> &events, std::vector<double> &stats, double *llh) {
     // preparations
     double t = sys.tspan[0];
     double t_max = sys.tspan[1];
@@ -296,7 +304,7 @@ void gillespie_fun(system_model &sys, std::vector<double> &time,std::vector<doub
         // update propensity
         update_propensity(propensity,state,sys);
         // compute next reaction event
-        bool success = next_reaction(&t,&t_index,&index,sys,propensity,internal_time,stats);
+        bool success = next_reaction(&t,&t_index,&index,sys,propensity,internal_time,stats,llh);
         if (not success)
             break;
         // update system
@@ -304,6 +312,7 @@ void gillespie_fun(system_model &sys, std::vector<double> &time,std::vector<doub
         // update internal time for the reaction that fired
         internal_time[index] += -std::log(U(rng));
         // save path variables
+        //std::cout << t << std::endl;
         time.push_back(t);
         events.push_back(index);
         //std::cout << t << " " << t_index << " " << internal_time[1] << " " << stats[1] << std::endl;
@@ -355,7 +364,7 @@ inline double comb_factor (int n, int k) {
     return(res);
 }
 
-bool next_reaction (double *t, int *t_index, int *index, const system_model &sys, const std::vector<double> &propensity, const std::vector<double> &internal_time, std::vector<double> &stats) {
+bool next_reaction (double *t, int *t_index, int *index, const system_model &sys, const std::vector<double> &propensity, const std::vector<double> &internal_time, std::vector<double> &stats, double *reaction_llh) {
     /* Calculates reaction times for all channels. The mimimum time and the corresponding index are saved in delta_t and index. */
     *index = -1;
     // find the time_index that corresponds to largest time grid value smaller than the current time
@@ -375,9 +384,6 @@ bool next_reaction (double *t, int *t_index, int *index, const system_model &sys
             tmp3[i] = tmp2[i];
         }
     }
-    // for (int i = 0; i < sys.num_reactions; i++){
-    //     std::cout << sys.control[i] << " " << tmp1[i] << " " << tmp2[i] << " " << tmp3[i] << std::endl;
-    // }
     (*t_index)++;
     bool fired = false;
     // check if a reaction has already fired in the initial interval
@@ -425,6 +431,9 @@ bool next_reaction (double *t, int *t_index, int *index, const system_model &sys
         double min_time = sys.tspan[1];
         size_t ind = (*t_index)*sys.num_reactions;
         for (unsigned i = 0; i < sys.num_reactions; i++) {
+            // if (*t > 714 & *t < 715) {
+            //     std::cout << propensity[i] << std::endl;
+            // }
             if (propensity[i] > 0 && tmp1[i] < tmp3[i]) { // the second condition ensures that a positive solution exists
                 // solve for time
                 double tmp_time = tmp1[i]/sys.control[ind+i];
@@ -438,10 +447,13 @@ bool next_reaction (double *t, int *t_index, int *index, const system_model &sys
         // calculate the time of the next reaction
         double delta_t = std::max(0.0,sys.time_grid[*t_index]-*t);
         *t += delta_t+min_time;
+        double total_rate = 0.0;
         // update the internal time for all the reactions
         for (unsigned i = 0; i < sys.num_reactions; i++ ) {
-            stats[i] += (tmp2[i]+sys.control[ind+i])*min_time*propensity[i];
+            stats[i] += (tmp2[i]+sys.control[ind+i]*min_time)*propensity[i];
+            total_rate += sys.control[ind+i]*propensity[i];
         }
+        *reaction_llh += std::log(sys.control[ind+*index]*propensity[*index]/total_rate);
     }
     else { // update the statistics up to the final time
         for ( unsigned i = 0; i < sys.num_reactions; i++) {

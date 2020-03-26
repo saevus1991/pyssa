@@ -67,6 +67,7 @@ seed = np.random.randint(2**16)
 
 # simulate 
 trajectory = gillespie.simulate(pre, post, control, time_grid, initial, tspan, seed)
+print(trajectory['llh'])
 
 # set up an observation model
 sigma = np.array([0.15])
