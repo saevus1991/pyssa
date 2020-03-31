@@ -202,7 +202,6 @@ static PyObject *simulate(PyObject *self, PyObject *args) {
     PyObject *state_history_out = PyArray_NewFromVector(state_history, state_history_dims);
 
     // compute log likelihood
-    //double llh = 0.0;
     for (int i = 0; i < stats.size(); i++) {
         llh -= stats[i];
     }
