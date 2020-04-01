@@ -45,6 +45,8 @@ bool next_reaction(double *t, int *t_index, int *index, const system_model &sys,
 void update_state(std::vector<double> &state,int index,const system_model &sys);
 void construct_trajectory(const system_model &sys,const std::vector<double> events, std::vector<double> &trajectory);
 void update_total_propensity(std::vector<double> &total_propensity, const std::vector<double> &propensity, system_model &sys, double delta_t );
+double compute_likelihood(const system_model &sys, double *events, double *times, unsigned num_events);
+
 
 extern "C"{
 
@@ -232,10 +234,171 @@ static PyObject *simulate(PyObject *self, PyObject *args) {
     return(sample);
 }
 
+static PyObject *llh(PyObject *self, PyObject *args) {
+
+    // set up requried data objects
+    PyObject *pre_in = NULL, *post_in = NULL, *control_in = NULL, *time_grid_in = NULL, *initial_in = NULL, *tspan_in = NULL, *times_in = NULL, *events_in = NULL;
+
+    if (!PyArg_ParseTuple(args, "OOOOOOOO", 
+                                &pre_in,
+                                &post_in,
+                                &control_in,
+                                &time_grid_in,
+                                &initial_in,
+                                &tspan_in,
+                                &times_in,
+                                &events_in)) {
+         return NULL;
+    } 
+
+    // parse pre matrix to array
+    PyObject *pre = PyArray_FROM_OTF(pre_in, NPY_DOUBLE, NPY_IN_ARRAY);
+    if (pre == NULL) {
+        return NULL;
+    }
+    int pre_ndim = PyArray_NDIM(pre);
+    if (pre_ndim != 2){
+        Py_DECREF(pre);
+        return NULL;
+    }
+    npy_intp* pre_dims = PyArray_DIMS(pre);
+
+    // extract size informatoin
+    int num_reactions = pre_dims[0];
+    int num_species = pre_dims[1];
+    int num_elements = PyArray_SIZE(pre);
+
+    // parse post to array
+    PyObject *post = PyArray_FROM_OTF(post_in, NPY_DOUBLE, NPY_IN_ARRAY);
+    if (post == NULL) {
+        Py_DECREF(pre);
+        return NULL;
+    }
+    int post_ndim = PyArray_NDIM(post);
+    if (post_ndim != 2){
+        Py_DECREF(pre);
+        Py_DECREF(post);
+        return NULL;
+    }
+
+    // parse rates to array
+    PyObject *control = PyArray_FROM_OTF(control_in, NPY_DOUBLE, NPY_IN_ARRAY);
+    if (control == NULL) {
+        Py_DECREF(pre);
+        Py_DECREF(post);
+        return NULL;
+    }
+
+    // parse rates to array
+    PyObject *time_grid = PyArray_FROM_OTF(time_grid_in, NPY_DOUBLE, NPY_IN_ARRAY);
+    if (time_grid == NULL) {
+        Py_DECREF(pre);
+        Py_DECREF(post);
+        Py_DECREF(control);
+        return NULL;
+    }
+
+    // get number of control steps
+    npy_intp* time_grid_dims = PyArray_DIMS(time_grid);
+    unsigned num_steps = time_grid_dims[0];
+
+    // parse initial to array
+    PyObject *initial = PyArray_FROM_OTF(initial_in, NPY_DOUBLE, NPY_IN_ARRAY);
+    if (initial == NULL) {
+        Py_DECREF(pre);
+        Py_DECREF(post);
+        Py_DECREF(control);
+        Py_DECREF(time_grid);
+        return NULL;
+    }
+
+    // parse tspan to array
+    PyObject *tspan = PyArray_FROM_OTF(tspan_in, NPY_DOUBLE, NPY_IN_ARRAY);
+    if (tspan == NULL) {
+        Py_DECREF(pre);
+        Py_DECREF(post);
+        Py_DECREF(control);
+        Py_DECREF(time_grid);
+        Py_DECREF(initial);
+        return NULL;
+    }
+
+    // parse times to array
+    PyObject *times = PyArray_FROM_OTF(times_in, NPY_DOUBLE, NPY_IN_ARRAY);
+    if (times == NULL) {
+        Py_DECREF(pre);
+        Py_DECREF(post);
+        Py_DECREF(control);
+        Py_DECREF(time_grid);
+        Py_DECREF(initial);
+        Py_DECREF(tspan);
+        return NULL;
+    }
+
+    // get number of time steps
+    npy_intp* times_dims = PyArray_DIMS(times);
+    unsigned num_events = times_dims[0];
+
+    // parse events to array
+    PyObject *events = PyArray_FROM_OTF(events_in, NPY_DOUBLE, NPY_IN_ARRAY);
+    if (events == NULL) {
+        Py_DECREF(pre);
+        Py_DECREF(post);
+        Py_DECREF(control);
+        Py_DECREF(time_grid);
+        Py_DECREF(initial);
+        Py_DECREF(tspan);
+        Py_DECREF(times);
+        return NULL;
+    }
+
+    // create stochiometry matrix
+    double *pre_ptr = (double*)PyArray_DATA(pre);
+    double *post_ptr = (double*)PyArray_DATA(post);
+    std::vector<double> stoch(num_elements);
+    for (unsigned i = 0; i < stoch.size(); i++) {
+        stoch[i] = post_ptr[i]-pre_ptr[i];
+    }
+
+    // create model structure
+    system_model sys;
+    sys.num_species = num_species;
+    sys.num_reactions = num_reactions;
+    sys.num_elements = num_elements;
+    sys.Pre = pre_ptr;
+    sys.Post = post_ptr;
+    sys.S = stoch.data();
+    sys.state = (double*)PyArray_DATA(initial);
+    sys.control = (double*)PyArray_DATA(control);
+    sys.time_grid = (double*)PyArray_DATA(time_grid);
+    sys.num_steps = num_steps;
+    sys.tspan = (double*)PyArray_DATA(tspan);
+
+    // compute log likelihood
+    double llh = compute_likelihood(sys, (double*)PyArray_DATA(events), (double*)PyArray_DATA(times), num_events);
+
+    // Build output value
+    PyObject *llh_out = Py_BuildValue("d", llh);
+
+    // clean up
+    Py_DECREF(pre);
+    Py_DECREF(post);
+    Py_DECREF(control);
+    Py_DECREF(time_grid);
+    Py_DECREF(initial);
+    Py_DECREF(tspan);
+    Py_DECREF(times);
+    Py_DECREF(events);
+
+    return(llh_out);
+}
+
 static PyMethodDef gillespie_timedep_methods[] = {
     //...
     {"simulate",  simulate, METH_VARARGS,
      "Stochastic simulation of a mass action model for a fixed initial over a given time span"},
+    {"llh",  llh, METH_VARARGS,
+     "Compute the log likelihood of a given trajectory"},
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
@@ -393,7 +556,7 @@ bool next_reaction (double *t, int *t_index, int *index, const system_model &sys
         }
     }
     // iterate over all reactions and increase index until first reaction fires
-    while ( *t_index < sys.num_steps-1 && !fired ) {
+    while ( *t_index < sys.num_steps-1 && !fired & sys.time_grid[*t_index] < sys.tspan[1]) {
         // calculate the increment to the integral
         for (unsigned i = 0; i < sys.num_reactions; i++) {
             // if propensity is positive, evaluate the next time
@@ -499,5 +662,73 @@ void construct_trajectory(const system_model &sys,const std::vector<double> even
 //     return;
 // }
 
+double compute_likelihood(const system_model &sys, double *events, double *times, unsigned num_events) {
+    // preparations
+    std::vector<double> state(sys.state,sys.state+sys.num_species);
+    double t = sys.tspan[0];
+    double t_max = sys.tspan[1];
+    int t_index = 0;
+    std::vector<double> propensity(sys.num_reactions);
+    std::vector<double> stats(sys.num_reactions);
+    double llh = 0.0;
+    //std::cout << t << " " << sys.time_grid[t_index] << std::endl;
+    // iterate over events
+    for (unsigned i = 0; i < num_events; i++) {
+        // std::cout << "times[" << i << "] = " << times[i] << ", t = " << t << std::endl;
+        // compute propensity
+        int index = events[i];
+        update_propensity(propensity, state, sys);
+        // update t_index
+        std::vector<double> effective_rates(sys.num_reactions);
+        while (t_index < sys.num_steps-1 && sys.time_grid[t_index+1] < times[i] ) {
+            for (unsigned j = 0; j < sys.num_reactions; j++) {
+                effective_rates[j] += (sys.time_grid[t_index+1]-t)*sys.control[sys.num_reactions*t_index+j];
+            }
+            t = sys.time_grid[t_index+1];
+            t_index++;
+        }
+        // correct for fial interval
+        for (unsigned j = 0; j < sys.num_reactions; j++) {
+            effective_rates[j] += (times[i]-t)*sys.control[sys.num_reactions*t_index+j];
+        }
+        // compute waiting time contribution
+        for (unsigned j = 0; j < sys.num_reactions; j++) {
+            stats[j] += effective_rates[j]*propensity[j];
+        }
+        // compute hazard llh contribution
+        double total_propensity = 0.0;
+        int ind = t_index*sys.num_reactions;
+        for (unsigned j = 0; j < sys.num_reactions; j++) {
+            propensity[j] *= sys.control[ind+j];
+            total_propensity += propensity[j];
+        }
+        llh += std::log(propensity[index]/total_propensity);
+        //llh -= (times[i]-time)*total_propensity;
+        // update
+        t = times[i];
+        update_state(state, index, sys);
+    }
+    // contribution of the final interval
+    update_propensity(propensity, state, sys);
+    std::vector<double> effective_rates(sys.num_reactions);
+    while (t_index < sys.num_steps-1 && sys.time_grid[t_index+1] < t_max) {
+        for (unsigned j = 0; j < sys.num_reactions; j++) {
+            effective_rates[j] += (sys.time_grid[t_index+1]-t)*sys.control[sys.num_reactions*t_index+j];
+        }
+        t = sys.time_grid[t_index+1];
+        t_index++;
+    }
+    // terminal contribution
+    for (unsigned j = 0; j < sys.num_reactions; j++) {
+        effective_rates[j] += (t_max-t)*sys.control[sys.num_reactions*t_index+j];
+    }
+    for (unsigned j = 0; j < sys.num_reactions; j++) {
+        stats[j] += propensity[j]*effective_rates[j];
+    }
+    for (unsigned j = 0; j < sys.num_reactions; j++) {
+        llh -= stats[j];
+    }
+    return(llh);
+}
 
 

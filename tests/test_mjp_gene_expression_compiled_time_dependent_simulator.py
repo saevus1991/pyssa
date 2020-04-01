@@ -63,11 +63,14 @@ delta_t = 300.0
 obs_times = np.arange(tspan[0]+0.5*delta_t, tspan[1], delta_t)
 time_grid = np.append(time[:, :, 0].flatten(), tspan[1])
 control = np.exp(control.reshape((-1, control.shape[-1]))) * np.expand_dims(rates, axis=0)
-seed = np.random.randint(2**16)
 
 # simulate 
-trajectory = gillespie.simulate(pre, post, control, time_grid, initial, tspan, seed)
-print(trajectory['llh'])
+for i in range(100):
+    seed = np.random.randint(2**16)
+    trajectory = gillespie.simulate(pre, post, control, time_grid, initial, tspan, seed)
+    llh = gillespie.llh(pre, post, control, time_grid, initial, tspan, trajectory['times'], trajectory['events'])
+    print(trajectory['llh'])
+    print(llh)
 
 # set up an observation model
 sigma = np.array([0.15])
