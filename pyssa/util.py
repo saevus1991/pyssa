@@ -117,7 +117,7 @@ def assert_ratemat(mat):
     # check diagonal is zero
     assert(np.all(mat.diagonal() == 0.0))
     # check non-negative elements
-    assert(np.all(q_mat >= 0.0))
+    assert(np.all(mat >= 0.0))
 
 
 def assert_transmat(mat, tol=1e-10):

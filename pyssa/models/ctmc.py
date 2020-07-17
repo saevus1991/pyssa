@@ -86,9 +86,9 @@ class CTMC(MJP):
             # check generator
             ut.assert_ratemat(generator)
             # get exit rates
-            exit_rates = np.sym(generator, axis=1)
+            exit_rates = np.sum(generator, axis=1)
             # normalize by rates
-            transition = np.copy(generator)/self.exit_rates.reshape(-1, 1)
+            transition = np.copy(generator)/exit_rates.reshape(-1, 1)
         elif form == 'embedded':
             # check stuff
             assert(type(generator) == tuple)

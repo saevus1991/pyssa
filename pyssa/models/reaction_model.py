@@ -56,7 +56,7 @@ class ReactionModel(MJP):
         return(new_state)
 
 
-class BaseReactionModel:
+class BaseReactionModel(MJP):
     """
     Implementation of a reaction model defined by a number of
     change vector stored in the stoichiometry matrix and an arbitrary propensity functor
