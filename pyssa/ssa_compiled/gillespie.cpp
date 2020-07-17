@@ -10,12 +10,14 @@ struct system_model {
     unsigned num_species;
     unsigned num_reactions;
     unsigned num_elements;
+    unsigned num_steps;
     double *Pre;
     double *Post;
     double *S;
     double *state;
     double *rates;
     double *tspan;
+    double *t_eval;
     size_t seed;
 };
 
@@ -35,7 +37,8 @@ void PyArray_FromVector(PyObject *target, const std::vector<double> &source) {
 static PyObject *PyArray_NewFromVector(const std::vector<double> &source, std::vector<npy_intp> &dims);
 static PyObject *PyArray_NewFromVector(const std::vector<double> &source);
 
-void gillespie_fun (system_model &sys, std::vector<double> &time, std::vector<double> &events, std::vector<double> &stats, double *llh) ;
+void gillespie_full (system_model &sys, std::vector<double> &time, std::vector<double> &events, std::vector<double> &stats, double *llh);
+void gillespie_grid (system_model &sys, std::vector<double> &state_history, std::vector<double> &stats, double *llh);
 void update_propensity(std::vector<double> &propensity, std::vector<double> &state, const system_model &sys);
 inline double comb_factor (int n, int k);
 bool next_reaction (double *t, int *index, system_model &sys, std::vector<double> &propensity, double rand_1, double rand_2, std::vector<double> &stats, double *reaction_llh);
@@ -47,19 +50,30 @@ double compute_likelihood(const system_model &sys, double *events, double *times
 
 extern "C"{
 
-static PyObject *simulate(PyObject *self, PyObject *args) {
+static PyObject *simulate(PyObject *self, PyObject *args, PyObject *kwargs) {
 
     // set up requried data objects
-    PyObject *pre_in = NULL, *post_in = NULL, *rates_in = NULL, *initial_in = NULL, *tspan_in = NULL;
+    PyObject *pre_in = NULL, *post_in = NULL, *rates_in = NULL, *initial_in = NULL, *tspan_in = NULL, *t_eval_in = NULL;
     int seed;
+    static char *kwlist[] = {
+        "pre_in",
+        "post_in",
+        "rates_in",
+        "initial_in",
+        "tspan_in",
+        "seed",
+        "t_eval",
+        NULL
+    };
 
-    if (!PyArg_ParseTuple(args, "OOOOOi", 
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOOi|O", kwlist,
                                 &pre_in,
                                 &post_in,
                                 &rates_in,
                                 &initial_in,
                                 &tspan_in,
-                                &seed)) {
+                                &seed,
+                                &t_eval_in)) {
          return NULL;
     } 
 
@@ -120,6 +134,13 @@ static PyObject *simulate(PyObject *self, PyObject *args) {
         return NULL;
     }
 
+    PyObject *t_eval = NULL;
+    unsigned num_steps;
+    if (t_eval_in != NULL) {
+        t_eval = PyArray_FROM_OTF(t_eval_in, NPY_DOUBLE, NPY_IN_ARRAY);
+        num_steps = (int)PyArray_Size(t_eval);
+    }
+
     // create stochiometry matrix
     double *pre_ptr = (double*)PyArray_DATA(pre);
     double *post_ptr = (double*)PyArray_DATA(post);
@@ -139,6 +160,9 @@ static PyObject *simulate(PyObject *self, PyObject *args) {
     sys.state = (double*)PyArray_DATA(initial);
     sys.rates = (double*)PyArray_DATA(rates);
     sys.tspan = (double*)PyArray_DATA(tspan);
+    if (t_eval != NULL)
+        sys.t_eval = (double*)PyArray_DATA(t_eval);
+        sys.num_steps = num_steps;
     sys.seed = seed;  
 
     // for (int i = 0; i < num_reactions; i++){
@@ -153,18 +177,23 @@ static PyObject *simulate(PyObject *self, PyObject *args) {
     // construct intermediate storage
     size_t size_estimate = 1000;
     std::vector<double> time;
-    time.reserve(size_estimate);
     std::vector<double> events;
-    events.reserve(size_estimate);
     std::vector<double> stats(sys.num_reactions);
+    std::vector<double> state_history;
     double llh = 0.0;
     
     // perform calculation
-    gillespie_fun(sys, time, events, stats, &llh); 
-
-    // create output matrix for the state
-    std::vector<double> state_history(sys.num_species*events.size());
-    construct_trajectory(sys, events, state_history);
+    if (t_eval == NULL) {
+        time.reserve(size_estimate);
+        events.reserve(size_estimate);
+        gillespie_full(sys, time, events, stats, &llh);
+        state_history.resize(sys.num_species*events.size());
+        construct_trajectory(sys, events, state_history);
+    }
+    else {
+        state_history.resize(sys.num_species*num_steps);
+        gillespie_grid(sys, state_history, stats, &llh);
+    }
     
     // // create output matrix for time
     // plhs[0] = mxCreateDoubleMatrix(1,time.size(),mxREAL);
@@ -218,6 +247,8 @@ static PyObject *simulate(PyObject *self, PyObject *args) {
     Py_DECREF(rates);
     Py_DECREF(initial);
     Py_DECREF(tspan);
+    if (t_eval != NULL)
+        Py_DECREF(t_eval);
     Py_DECREF(initial_out);
     Py_DECREF(tspan_out);
     Py_DECREF(time_out);
@@ -368,7 +399,7 @@ static PyObject *llh(PyObject *self, PyObject *args) {
 
 static PyMethodDef gillespie_methods[] = {
     //...
-    {"simulate",  simulate, METH_VARARGS,
+    {"simulate",  (PyCFunction)simulate, METH_VARARGS | METH_KEYWORDS,
      "Stochastic simulation of a mass action model for a fixed initial over a given time span"},
     {"llh",  llh, METH_VARARGS,
      "Compute the log likelihood of a given trajectory"},
@@ -417,7 +448,7 @@ static PyObject *PyArray_NewFromVector(const std::vector<double> &source) {
     return(target);
 }
 
-void gillespie_fun (system_model &sys, std::vector<double> &time, std::vector<double> &events, std::vector<double> &stats, double *llh) {
+void gillespie_full (system_model &sys, std::vector<double> &time, std::vector<double> &events, std::vector<double> &stats, double *llh) {
     // preparations
     double t = sys.tspan[0];
     double t_max = sys.tspan[1];
@@ -431,13 +462,45 @@ void gillespie_fun (system_model &sys, std::vector<double> &time, std::vector<do
         // determine next event
         update_propensity(propensity,state,sys);
         bool success = next_reaction(&t,&index,sys,propensity,U(rng),U(rng),stats,llh);
-        if (not success)
+        if (not success) {
             break;
+        }
         // update system
         update_state(state,index,sys);
         // update output statistics
         events.push_back(index);
         time.push_back(t);
+    }
+    return;
+}
+
+void gillespie_grid (system_model &sys, std::vector<double> &state_history, std::vector<double> &stats, double *llh) {
+    // preparations
+    double t = sys.tspan[0];
+    double t_max = sys.t_eval[sys.num_steps-1];
+    int index = 0;
+    int t_index = 0;
+    std::vector<double> state(sys.state,sys.state+sys.num_species);
+    std::vector<double> propensity(sys.num_reactions);
+    std::mt19937 rng(sys.seed);
+    std::uniform_real_distribution<double> U;
+    // sample path
+    while (t_index < sys.num_steps) {
+        // determine next event
+        update_propensity(propensity, state, sys);
+        bool success = next_reaction(&t, &index, sys,propensity, U(rng), U(rng), stats,llh);
+        if (not success) {
+            t = t_max + 1.0;
+        }
+        // update state
+        while (t_index < sys.num_steps & t > sys.t_eval[t_index]) {
+            for (int j = 0; j < sys.num_species; j++) {
+                state_history[t_index*sys.num_species+j] = state[j];
+            }
+            t_index++;
+        }
+        // update system
+        update_state(state, index, sys);
     }
     return;
 }
