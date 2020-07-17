@@ -8,6 +8,18 @@ from pyssa.models.diffusion import Diffusion
 #import pyssa.util as ut
 #from scipy import sparse
 
+class RREModel(KineticModel):
+
+    def eval(self, state, time):
+        prop = self.rre_prop(state)*self.rates
+        drift = self.stoichiometry.T @ prop
+        return(drift)
+
+    def rre_prop(self, state):
+        global cnt
+        prop = np.prod(np.expand_dims(state, axis=0)**self.pre, axis=1)
+        return(prop)
+
 
 class CLEModel(KineticModel, Diffusion):
     """
