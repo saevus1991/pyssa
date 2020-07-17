@@ -205,18 +205,39 @@ class SparseKineticModel(PhysicalKineticModel):
         self.second = sparse.csr_matrix(tmp)
 
 
-def kinetic_to_generator(kinetic_model, bounds):
-    """
-    Convert a kinetic model to a rate matrix using state space truncation
-    """
-    # construct label to state dictionary
-    keymap = {}
+def get_statemap(bounds, output='dict', reverse=True):
     num_states = np.prod(bounds)
+    if output == 'dict':
+        keymap = {}
+    elif output == 'array':
+        keymap = np.zeros((num_states, len(bounds)), dtype='int64')
     for i in range(num_states):
         state = np.array(np.unravel_index(i, bounds))
         keymap[i] = state
     # construct the reverse dict 
-    reversemap = {value.tobytes(): key for (key, value) in keymap.items()}
+    if reverse:
+        if output=='dict':
+            reversemap = {value.tobytes(): key for (key, value) in keymap.items()}
+        elif output=='array':
+            reversemap = {keymap[i].tobytes(): i for i in range(num_states)}
+        return(keymap, reversemap)
+    else:
+        return(keymap)
+
+
+def kinetic_to_generator(kinetic_model, bounds, mode='embedded'):
+    """
+    Convert a kinetic model to a rate matrix using state space truncation
+    """
+    # # construct label to state dictionary
+    # keymap = {}
+    num_states = np.prod(bounds)
+    # for i in range(num_states):
+    #     state = np.array(np.unravel_index(i, bounds))
+    #     keymap[i] = state
+    # # construct the reverse dict 
+    # reversemap = {value.tobytes(): key for (key, value) in keymap.items()}
+    keymap, reversemap = get_statemap(bounds)
     # find the nonzero elements of generator
     row_ind = []
     col_ind = []
@@ -244,12 +265,23 @@ def kinetic_to_generator(kinetic_model, bounds):
         rates[i] = props.sum()
         eff_props = props[props > 0.0]
         if len(eff_props) > 0:
-            val += list(props[props > 0.0]/props.sum())
+            if mode == 'embedded':
+                val += list(props[props > 0.0]/props.sum())
+            elif mode == 'rate_matrix':
+                val += list(props[props > 0.0])
+            elif mode == 'generator':
+                val += list(props[props > 0.0])
+                row_ind.append(i)
+                col_ind.append(i)
+                val.append(-rates[i])
         else:
-            row_ind.append(i)
-            col_ind.append(i)
-            val.append(1.0)
+            if mode == 'embedded':
+                row_ind.append(i)
+                col_ind.append(i)
+                val.append(1.0)
     # construct sparse generator
-    transition = sparse.csr_matrix((val, (row_ind, col_ind)), shape=(num_states, num_states))
-    return(rates, transition, keymap)
-
+    matrix = sparse.csr_matrix((val, (row_ind, col_ind)), shape=(num_states, num_states))
+    if mode == 'embedded' or mode == 'rate_matrix':
+        return(rates, matrix, (keymap, reversemap))
+    elif mode == 'generator':
+        return(matrix, (keymap, reversemap))
