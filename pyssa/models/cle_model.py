@@ -26,9 +26,15 @@ class CLEModel(KineticModel, Diffusion):
     general chemical Langevin model
     """
 
+    def __init__(self, pre, post, rates, volume=1.0, rescale=False):
+        super().__init__(pre, post, rates, volume)
+        self.rescale = rescale
+
     def eval(self, state, time):
         # compute the propensity
-        prop = self.mass_action(state)*self.rates
+        if self.rescale:
+            state = state*self.volume
+        prop = self.propensity(state)
         # evaluate drift
         drift = self.stoichiometry.T @ prop
         # evaluate diffusion
@@ -39,6 +45,9 @@ class CLEModel(KineticModel, Diffusion):
             tmp = np.linalg.svd(diffusion)
             diffusion = tmp[0] @ np.diag(np.sqrt(tmp[1]))
         # return drift and diffusion
+        if self.rescale:
+            drift /= self.volume
+            diffusion /= self.volume
         return(drift, diffusion)
 
     def get_dimension(self):
@@ -52,14 +61,23 @@ class CLEModelExtended(KineticModel, Diffusion):
     uses a higher order driving wiener process. Thus, we do not have to compute a root of the diffusion tensor
     """
 
+    def __init__(self, pre, post, rates, volume=1.0, rescale=False):
+        super().__init__(pre, post, rates, volume)
+        self.rescale = rescale
+
     def eval(self, state, time):
         # compute the propensity
-        prop = self.mass_action(state)*self.rates
+        if self.rescale:
+            state = state*self.volume
+        prop = self.propensity(state)
         # evaluate drift
         drift = self.stoichiometry.T @ prop
         # evaluate diffusion
-        diffusion = self.stoichiometry.T @ np.diag(np.sqrt(prop)) 
+        diffusion = self.stoichiometry.T @ np.diag(np.sqrt(prop))
         # return drift and diffusion
+        if self.rescale:
+            drift /= self.volume
+            diffusion /= self.volume
         return(drift, diffusion)
 
     def get_dimension(self):
@@ -74,14 +92,23 @@ class CLEModelLV(KineticModel, Diffusion):
     uses a large volume assumption for evaluating the propensities
     """
 
+    def __init__(self, pre, post, rates, volume=1.0, rescale=False):
+        super().__init__(pre, post, rates, volume)
+        self.rescale = rescale
+
     def eval(self, state, time):
         # compute the propensity
-        prop = np.prod(state**self.pre, axis=1)*self.rates
+        if self.rescale:
+            state = state*self.volume
+        prop = np.prod(state**self.pre, axis=1)*self.rates / self.volume_factor
         # evaluate drift
         drift = self.stoichiometry.T @ prop
         # evaluate diffusion
         diffusion = self.stoichiometry.T @ np.diag(np.sqrt(prop)) 
         # return drift and diffusion
+        if self.rescale:
+            drift /= self.volume
+            diffusion /= self.volume
         return(drift, diffusion)
 
     def get_dimension(self):

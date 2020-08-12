@@ -14,7 +14,7 @@ class KineticModel(MJP):
 
     # implemented abstract methods
 
-    def __init__(self, pre, post, rates):
+    def __init__(self, pre, post, rates, volume=1.0):
         """
         The class requires 2 matrices of shape (num_reactions x num_species)
         specifying the populations before and after each reaction as well
@@ -25,6 +25,8 @@ class KineticModel(MJP):
         self.post = post
         self.rates = rates
         self.stoichiometry = post-pre
+        self.volume = volume
+        self.volume_factor = volume**(np.sum(self.pre, axis=1)-1)
 
     def label2state(self, label):
         """
@@ -39,13 +41,17 @@ class KineticModel(MJP):
         """
         return(state)
 
+    def propensity(self, state):
+        prop = self.mass_action(state) * self.rates / self.volume_factor
+        return(prop)
+
     def exit_stats(self, state):
         """
         Returns the exit rate corresponding to the current state
         and an array containing a probability distribution over target states
         """
         # compute raw mass action propensity
-        prop = self.mass_action(state)*self.rates
+        prop = self.propensity(state)
         # compute rate and
         rate = prop.sum()
         # catch for absorbing states
