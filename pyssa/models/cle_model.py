@@ -49,7 +49,7 @@ class CLEModel(KineticModel, Diffusion):
 class CLEModelExtended(KineticModel, Diffusion):
     """
     general chemical Langevin model
-    uses a higher order driving wiender process. Thus, we do not have to compute a root of the diffusion tensor
+    uses a higher order driving wiener process. Thus, we do not have to compute a root of the diffusion tensor
     """
 
     def eval(self, state, time):

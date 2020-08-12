@@ -121,6 +121,14 @@ def degradation_oscillator(*args):
     return (pre, post, rates)
 
 
+def stochastic_toggle_switch(*args):
+
+    file_name = 'stochastic_toggle_switch.xlsx'
+    pre, post, rates = from_excel(file_name)
+
+    return(pre, post, rates)
+
+
 def stochastic_repressilator(*args):
 
     file_name = 'stochastic_repressilator.xlsx'
@@ -194,6 +202,7 @@ def get_standard_model(ident, *args):
     models = {
         "simple_gene_expression": simple_gene_expression,
         "single_gene_oscillator": single_gene_oscillator,
+        "stochastic_toggle_switch": stochastic_toggle_switch,
         "stochastic_repressilator": stochastic_repressilator,
         "predator_prey": predator_prey,
         "tasep": tasep,
