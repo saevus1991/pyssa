@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.interpolate import interp1d
 # import xarray as xr
 # import matplotlib.pyplot as plt
 # import inspect
@@ -166,3 +167,24 @@ def get_stats(trajectories):
     tmp = trajectories - np.expand_dims(mean, 0)
     cov = np.mean(np.expand_dims(tmp, -1) @ np.expand_dims(tmp, -2), axis=0)
     return(mean, cov)
+
+
+def discretize_trajectory(times, states, sample_times, obs_model=None, kind='linear'):
+    """ 
+    Interpolate a trajectory at given sample times and apply noise
+    Input:
+        time:  (num_steps,) np array of time grid for states
+        states: (num_steps,dim) np array of states values on grid
+        sample_times: (num_int,) np array of requestes time points 
+        obs_model: noise model, requires a .sample() method
+        kind: form of interpolation passed to interp1d
+    """
+    sample_states = interp1d(times, states, kind=kind, axis=0)(sample_times)
+    if obs_model is not None:
+        test = obs_model.sample(states[0], sample_times[0])
+        obs_dim = (obs_model.sample(states[0], sample_times[0])).size
+        obs_states = np.zeros((sample_states.shape[0], obs_dim))
+        for i in range(len(sample_times)):
+            obs_states[i] = obs_model.sample(sample_states[i], sample_times[i])
+        sample_states = obs_states
+    return(sample_states)
