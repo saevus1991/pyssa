@@ -462,8 +462,8 @@ void gillespie_full (system_model &sys, std::vector<double> &time, std::vector<d
         // determine next event
         update_propensity(propensity,state,sys);
         bool success = next_reaction(&t,&index,sys,propensity,U(rng),U(rng),stats,llh);
-        if (not success) {
-            break;
+        if (!success) {
+            break; 
         }
         // update system
         update_state(state,index,sys);
@@ -471,7 +471,7 @@ void gillespie_full (system_model &sys, std::vector<double> &time, std::vector<d
         events.push_back(index);
         time.push_back(t);
     }
-    return;
+    return; 
 }
 
 void gillespie_grid (system_model &sys, std::vector<double> &state_history, std::vector<double> &stats, double *llh) {
@@ -489,7 +489,7 @@ void gillespie_grid (system_model &sys, std::vector<double> &state_history, std:
         // determine next event
         update_propensity(propensity, state, sys);
         bool success = next_reaction(&t, &index, sys,propensity, U(rng), U(rng), stats,llh);
-        if (not success) {
+        if (!success) {
             t = t_max + 1.0;
         }
         // update state

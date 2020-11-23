@@ -467,7 +467,7 @@ void gillespie_fun(system_model &sys, std::vector<double> &time,std::vector<doub
         update_propensity(propensity,state,sys);
         // compute next reaction event
         bool success = next_reaction(&t,&t_index,&index,sys,propensity,internal_time,stats,llh);
-        if (not success)
+        if (!success)
             break;
         // update system
         update_state(state,index,sys);
