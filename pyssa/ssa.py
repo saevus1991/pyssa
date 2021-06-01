@@ -101,7 +101,7 @@ def simulate(model, initial, tspan, get_states=False):
     # set up model
     sim = Simulator(model, initial, tspan[0])
     # run simulation 
-    trajecotry = sim.simulate(initial, tspan)
+    trajectory = sim.simulate(initial, tspan, get_states=get_states)
     return(trajectory)
 
 

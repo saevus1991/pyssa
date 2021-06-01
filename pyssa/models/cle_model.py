@@ -27,7 +27,7 @@ class CLEModel(KineticModel, Diffusion):
     """
 
     def __init__(self, pre, post, rates, volume=1.0, rescale=False):
-        super().__init__(pre, post, rates, volume)
+        super().__init__(pre=pre, post=post, rates=rates, volume=volume)
         self.rescale = rescale
 
     def eval(self, state, time):
@@ -62,7 +62,7 @@ class CLEModelExtended(KineticModel, Diffusion):
     """
 
     def __init__(self, pre, post, rates, volume=1.0, rescale=False):
-        super().__init__(pre, post, rates, volume)
+        super().__init__(pre=pre, post=post, rates=rates, volume=volume)
         self.rescale = rescale
 
     def eval(self, state, time):
@@ -93,14 +93,14 @@ class CLEModelLV(KineticModel, Diffusion):
     """
 
     def __init__(self, pre, post, rates, volume=1.0, rescale=False):
-        super().__init__(pre, post, rates, volume)
+        super().__init__(pre=pre, post=post, rates=rates, volume=volume)
         self.rescale = rescale
 
     def eval(self, state, time):
         # compute the propensity
         if self.rescale:
             state = state*self.volume
-        prop = np.prod(state**self.pre, axis=1)*self.rates / self.volume_factor
+        prop = np.prod(state[None, :]**self.pre, axis=1)*self.rates / self.volume_factor
         # evaluate drift
         drift = self.stoichiometry.T @ prop
         # evaluate diffusion

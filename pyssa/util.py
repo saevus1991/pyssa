@@ -15,7 +15,7 @@ def falling_factorial(n, k):
         return(0)
     else:
         res = 1.0
-        for i in range(k):
+        for i in range(int(k)):
             res *= n-i
         return(res)
 
@@ -97,7 +97,7 @@ def assert_squaremat(mat):
     assert(mat.shape[0] == mat.shape[1])
 
 
-def assert_stochmat(mat, tol=1e-10):
+def assert_stochmat(mat, tol=1e-6):
     """
     Check that mat is a stochastic matrix
     """
@@ -169,16 +169,25 @@ def get_stats(trajectories):
     return(mean, cov)
 
 
-def discretize_trajectory(times, states, sample_times, obs_model=None, kind='linear'):
+def discretize_trajectory(trajectory, sample_times, obs_model=None, kind='zero'):
     """ 
-    Interpolate a trajectory at given sample times and apply noise
-    Input:
-        time:  (num_steps,) np array of time grid for states
-        states: (num_steps,dim) np array of states values on grid
-        sample_times: (num_int,) np array of requestes time points 
-        obs_model: noise model, requires a .sample() method
-        kind: form of interpolation passed to interp1d
+    Discretize a trajectory of a jump process by linear interpolation 
+    at the support points given in sample times
+    Input
+        trajectory: a dict with keys 'initial', 'tspan', 'times', 'states'
+        sample_times: np.array containin the sample times
     """
+    initial = np.array(trajectory['initial'])
+    if (len(trajectory['times']) == 0):
+        times = trajectory['tspan']
+        states = np.stack([initial, initial])
+    elif (trajectory['times'][-1] < trajectory['tspan'][1]):
+        delta = (trajectory['tspan'][1]-trajectory['tspan'][0])/1e-3
+        times = np.concatenate([trajectory['tspan'][0:1], trajectory['times'], trajectory['tspan'][1:]+delta])
+        states = np.concatenate([initial.reshape(1, -1), trajectory['states'], trajectory['states'][-1:, :]])
+    else:
+        times = np.concatenate([trajectory['tspan'][0:1], trajectory['times']])
+        states = np.concatenate([initial.reshape(1, -1), trajectory['states']])
     sample_states = interp1d(times, states, kind=kind, axis=0)(sample_times)
     if obs_model is not None:
         test = obs_model.sample(states[0], sample_times[0])

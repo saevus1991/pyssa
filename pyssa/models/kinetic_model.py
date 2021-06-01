@@ -2,31 +2,219 @@
 
 #imports
 import numpy as np
-from pyssa.models.mjp import MJP
-import pyssa.util as ut
+from collections import OrderedDict
+import re
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
+from pathlib import Path
+import sys
 from scipy import sparse
+import pyssa.util as ut
 
 
-class KineticModel(MJP):
+class KineticModelBuilder():
+
+    def __init__(self, name='Model', volume=1.0):
+        self.name = name
+        self.num_species = 0
+        self.num_reactions = 0
+        self.species_dict = OrderedDict()
+        self.reaction_dict = OrderedDict()
+        self.rates_dict = OrderedDict()
+        self.rates = None
+        self.pre = None
+        self.post = None
+        self.stoichiometry = None
+        self.is_build = False
+        self.volume = volume
+        self.volume_factor = None
+        return
+
+    def add_species(self, species):
+        """
+        Ad species to the list of species
+        Input
+            spcecies: string identifier for the species, should not contain spaces
+        """
+        self.species_dict[species] = self.num_species
+        self.num_species += 1
+        return
+
+    def add_reaction(self, name, reaction, rate):
+        """
+        Ad reaction to reaction dict
+        Input
+            name: a string identifier for the reaction
+            reaction: a string of the form "a A + b B -> c C + d D" 
+                      with integers a, b, c, d and valid species A, B, C, D
+            rate: float corresponding to the rate
+        """
+        self.reaction_dict[name] = reaction
+        self.rates_dict[name] = rate
+        self.num_reactions += 1
+        return
+
+    def remove_reaction(self, name):
+        """
+        Remove reaction to reaction dict
+        Input
+            name: a string identifier for the reaction
+        """
+        del self.reaction_dict[name]
+        del self.rates_dict[name]
+        self.num_reactions -= 1
+        return
+
+    def build(self):
+        """
+        Build model from current species and reactions
+        """
+        # initialize
+        pre = np.zeros((self.num_reactions, self.num_species))
+        post = np.zeros((self.num_reactions, self.num_species))
+        rates = np.zeros(self.num_reactions)
+        # process reactions
+        for i, (key, reaction) in enumerate(self.reaction_dict.items()):
+            # split reaction in left and right side
+            substrates, products = re.split(' -> ', reaction)
+            # extract inputs 
+            substrates = re.split(' \+ ', substrates)
+            for substrate in substrates:
+                num, species = re.split(' ', substrate)
+                pre[i, self.species_dict[species]] = int(num)
+            # extract outputs
+            products = re.split(' \+ ', products)
+            for product in products:
+                num, species = re.split(' ', product)
+                post[i, self.species_dict[species]] = int(num)
+            # get rates
+            rates[i] = self.rates_dict[key]
+        self.pre = pre
+        self.post = post
+        self.rates = rates
+        self.stoichiometry = post-pre
+        self.is_build = True
+        self.volume_factor = self.volume**(np.sum(self.pre, axis=1)-1)
+        return
+
+    def reset(self):
+        """
+        Reset model (delete numpy arrays)
+        """
+        self.pre = None
+        self.post = None
+        self.rates = None
+        self.is_build = False
+
+    def to_sbml(self, file_path=None, initial=None):
+        """
+        Convert model to an sbml file and store at file_path
+        """
+        if file_path is None:
+            file_path = sys.argv[0].replace('.py', '.xml')
+        # initialize model
+        sbml = ET.Element('sbml')
+        sbml.set('level', '2')
+        sbml.set('version', '5')
+        sbml.set('xmlns', 'http://www.sbml.org/sbml/level2/version5')
+        model = ET.SubElement(sbml, 'model')
+        model.set('name', self.name)
+        # set compartments
+        compartment_list = ET.SubElement(model, 'listOfCompartments')
+        compartment = ET.SubElement(compartment_list, 'compartment')
+        compartment.set('id', 'cell')
+        compartment.set('size', '1e-15')
+        # set up species
+        species_list = ET.SubElement(model, 'listOfSpecies')
+        for i, (key, val) in enumerate(self.species_dict.items()):
+            species = ET.SubElement(species_list, 'species')
+            species.set('id', f'X_{i}')
+            species.set('name', key)
+            species.set('compartment', 'cell')
+            if initial is not None:
+                species.set('initialAmount', str(initial[i]))
+        # set up reaction list
+        reaction_list = ET.SubElement(model, 'listOfReactions')
+        for i, (key, val) in enumerate(self.reaction_dict.items()):
+            reaction = ET.SubElement(reaction_list, 'reaction')
+            reaction.set('id', f'R_{i}')
+            reaction.set('name', key)
+            reaction.set('reversible', 'false')
+            reactant_list = ET.SubElement(reaction, 'listOfReactants')
+            product_list = ET.SubElement(reaction, 'listOfProducts')
+            # define kinetic law
+            kinetic_law = ET.SubElement(reaction, 'kineticLaw')
+            math = ET.SubElement(kinetic_law, 'math')
+            math.set('xmlns', 'http://www.w3.org/1998/Math/MathML')
+            apply = ET.SubElement(math, 'apply')
+            ET.SubElement(apply, 'times')
+            ci = ET.SubElement(apply, 'ci')
+            ci.text = f'c_{i}'
+            parameter_list = ET.SubElement(kinetic_law, 'listOfParameters')
+            parameter = ET.SubElement(parameter_list, 'parameter')
+            parameter.set('id', f'c_{i}')
+            parameter.set('value', str(self.rates_dict[key]))
+            # get reactants and products
+            substrates, products = re.split(' -> ', val)
+            substrates = re.split(' \+ ', substrates)
+            products = re.split(' \+ ', products)
+            # construct reactant list
+            for substrate in substrates:
+                species_ref = ET.SubElement(reactant_list, 'speciesReference')
+                num, species = re.split(' ', substrate)
+                species = f'X_{self.species_dict[species]}'
+                species_ref.set('species', species)
+                species_ref.set('stoichiometry', num)
+                ci = ET.SubElement(apply, 'ci')
+                ci.text = species
+            # construct product list
+            for product in products:
+                species_ref = ET.SubElement(product_list, 'speciesReference')
+                num, species = re.split(' ', product)
+                if int(num) > 0:
+                    species = f'X_{self.species_dict[species]}'
+                    species_ref.set('species', species)
+                    species_ref.set('stoichiometry', num)
+                else:
+                    # introduce sink
+                    sink = ET.SubElement(species_list, 'species')
+                    sink_id = f'X_{self.species_dict[species]}_'
+                    sink.set('id', sink_id)
+                    sink.set('sboTerm', 'SBO:0000291')
+                    sink.set('compartment', 'cell')
+                    # set as reference
+                    species_ref.set('species', sink_id)
+            # 
+            # times = ET.SubElement(apply, 'times')
+            # ci = ET.SubElement(apply, 'ci')
+        # parse output 
+        xmlstr = minidom.parseString(ET.tostring(sbml)).toprettyxml(indent='    ', encoding='utf-8')  # .encode('utf-8')
+        with open(file_path, "wb") as f:
+            f.write(xmlstr)
+        return
+
+
+class KineticModel(KineticModelBuilder):
     """
     Implementation of a basic mass-action gillespie model 
     """
 
     # implemented abstract methods
 
-    def __init__(self, pre, post, rates, volume=1.0):
+    def __init__(self, name='Model', pre=None, post=None, rates=None, volume=1.0):
         """
         The class requires 2 matrices of shape (num_reactions x num_species)
         specifying the populations before and after each reaction as well
         as an array of length num_reactions specifying the time scale of each reaction
         """
-        self.num_reactions, self.num_species = pre.shape
-        self.pre = pre
-        self.post = post
-        self.rates = rates
-        self.stoichiometry = post-pre
-        self.volume = volume
-        self.volume_factor = volume**(np.sum(self.pre, axis=1)-1)
+        KineticModelBuilder.__init__(self, name, volume)
+        if pre is not None and post is not None and rates is not None:
+            self.num_reactions, self.num_species = pre.shape
+            self.pre = pre
+            self.post = post
+            self.rates = rates
+            self.stoichiometry = post-pre
+            self.volume_factor = self.volume**(np.sum(self.pre, axis=1)-1)
 
     def label2state(self, label):
         """
@@ -89,205 +277,3 @@ class KineticModel(MJP):
                 prop[i] *= ut.falling_factorial(state[j], self.pre[i, j])
         return(prop)
 
-
-class PhysicalKineticModel(KineticModel):
-    """
-    Implementation of mass acton model with reactions up to order two.
-    Uses tensor math to compute propensity
-    """
-
-    # constructor
-    def __init__(self, pre, post, rates):
-        super().__init__(pre, post, rates)
-        self.second_order = None
-        self.zeroth, self.first, self.second = self.get_reaction_tensor(pre)
-
-
-    # reimplemented parent functions
-
-    def exit_stats(self, state):
-        """
-        Returns the exit rate corresponding to the current state
-        and an array containing a probability distribution over target states
-        """
-        # zeroth oder contribution
-        prop = self.zeroth.copy()
-        # first oder contribution
-        tmp = np.dot(self.first, state.reshape(-1, 1))
-        prop += tmp.squeeze()
-        # second order contribution
-        if self.second_order:
-            tmp = np.einsum('i,j,aij->a', state, state, self.second)
-            prop += tmp
-        # multiply with rates
-        prop *= self.rates
-        # normalize
-        rate = np.sum(prop)
-        return(rate, prop/rate)
-
-    # helper functions
-
-    def get_reaction_tensor(self, pre):
-        # get order of the individual reactions 
-        reaction_order = np.sum(pre, axis=1)
-        if np.any(reaction_order == 2):
-            self.second_order = True
-        # reject if higher order reaction is included
-        if (np.max(reaction_order) > 2):
-            raise Exception('System should not contain reactions of order larger than two.')
-        # set up the outputs
-        zeroth = np.zeros(self.num_reactions)
-        first = np.zeros([self.num_reactions, self.num_species])
-        second = np.zeros([self.num_reactions, self.num_species, self.num_species])
-        # iterate over reactions 
-        for i in range(self.num_reactions):
-            if reaction_order[i] == 0:
-                zeroth[i] == 1
-            elif reaction_order[i] == 1:
-                first[i, :] = pre[i, :]
-            elif reaction_order[i] == 2:
-                if np.max(pre[i, :]) == 2:
-                    ind = pre[i, :].nonzero()
-                    second[i, ind[0][0], ind[0][0]] = 1
-                    first[i, ind[0][0]] = -1
-                else:
-                    ind = pre[i, :].nonzero()
-                    second[i, ind[0][0], ind[0][1]] = 0.5
-                    second[i, ind[0][1], ind[0][0]] = 0.5
-            else:
-                raise Exception('Check system matrices.')
-        return zeroth, first, second
-
-
-class SparseKineticModel(PhysicalKineticModel):
-    """
-    Implementation of mass acton model with reactions up to order two.
-    Similar to PysicalKinetic model but uses a sparse tensor implementation 
-    to compute the probensities
-    """
-
-    # constructor
-
-    def __init__(self, pre, post, rates):
-        super().__init__(pre, post, rates)
-        self.sparsify_tensors()
-
-
-    # reimplemented parent functions
-
-    def exit_stats(self, state):
-        """
-        Returns the exit rate corresponding to the current state
-        and an array containing a probability distribution over target states
-        """
-        # zeroth oder contribution
-        prop = self.zeroth.copy()
-        # first oder contribution
-        tmp = self.first.dot(state)
-        prop += tmp.flatten()
-        # second order contribution
-        if self.second_order:
-            extended_state = np.kron(state, state)
-            tmp = self.second.dot(extended_state)
-            prop += tmp.flatten()
-        # multiply with rates
-        prop *= self.rates
-        # normalize
-        rate = np.sum(prop)
-        return(rate, prop/rate)
-
-    
-    # helper functions
-
-    def sparsify_tensors(self):
-        """
-        This functions converts the implementation of a kinetic model by transforming
-        the matrices used for computing the propensity to sparse arrays
-        """
-        # convert first order matrix to sparse
-        self.first = sparse.csr_matrix(self.first)
-        # convert second order tensor to matrix and then to sparse
-        tmp = self.second.reshape(self.num_reactions, -1)
-        self.second = sparse.csr_matrix(tmp)
-
-
-def get_statemap(bounds, output='dict', reverse=True):
-    num_states = np.prod(bounds)
-    if output == 'dict':
-        keymap = {}
-    elif output == 'array':
-        keymap = np.zeros((num_states, len(bounds)), dtype='int64')
-    for i in range(num_states):
-        state = np.array(np.unravel_index(i, bounds))
-        keymap[i] = state
-    # construct the reverse dict 
-    if reverse:
-        if output=='dict':
-            reversemap = {value.tobytes(): key for (key, value) in keymap.items()}
-        elif output=='array':
-            reversemap = {keymap[i].tobytes(): i for i in range(num_states)}
-        return(keymap, reversemap)
-    else:
-        return(keymap)
-
-
-def kinetic_to_generator(kinetic_model, bounds, mode='embedded'):
-    """
-    Convert a kinetic model to a rate matrix using state space truncation
-    """
-    # # construct label to state dictionary
-    # keymap = {}
-    num_states = np.prod(bounds)
-    # for i in range(num_states):
-    #     state = np.array(np.unravel_index(i, bounds))
-    #     keymap[i] = state
-    # # construct the reverse dict 
-    # reversemap = {value.tobytes(): key for (key, value) in keymap.items()}
-    keymap, reversemap = get_statemap(bounds)
-    # find the nonzero elements of generator
-    row_ind = []
-    col_ind = []
-    val = []
-    rates = np.zeros(num_states)
-    for i in range(num_states):
-        # get current state
-        state = keymap[i]
-        # evalute propensity
-        rate, props = kinetic_model.exit_stats(state)
-        raw_props = rate*props
-        props = raw_props.copy()
-        # get target states and store transition element
-        for ind, prop in enumerate(raw_props):
-            if prop > 0.0:
-                target = kinetic_model.update(state, ind)
-                try:
-                    label = reversemap[target.tobytes()]
-                    row_ind.append(i)
-                    col_ind.append(label)
-                except KeyError:
-                    props[ind] = 0.0
-                    pass
-                    #print('Transition rate '+str(state)+'->'+str(target)+' set to zero.')
-        rates[i] = props.sum()
-        eff_props = props[props > 0.0]
-        if len(eff_props) > 0:
-            if mode == 'embedded':
-                val += list(props[props > 0.0]/props.sum())
-            elif mode == 'rate_matrix':
-                val += list(props[props > 0.0])
-            elif mode == 'generator':
-                val += list(props[props > 0.0])
-                row_ind.append(i)
-                col_ind.append(i)
-                val.append(-rates[i])
-        else:
-            if mode == 'embedded':
-                row_ind.append(i)
-                col_ind.append(i)
-                val.append(1.0)
-    # construct sparse generator
-    matrix = sparse.csr_matrix((val, (row_ind, col_ind)), shape=(num_states, num_states))
-    if mode == 'embedded' or mode == 'rate_matrix':
-        return(rates, matrix, (keymap, reversemap))
-    elif mode == 'generator':
-        return(matrix, (keymap, reversemap))
