@@ -16,7 +16,6 @@ class RREModel(KineticModel):
         return(drift)
 
     def rre_prop(self, state):
-        global cnt
         prop = np.prod(np.expand_dims(state, axis=0)**self.pre, axis=1)
         return(prop)
 
