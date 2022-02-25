@@ -33,3 +33,10 @@ class MJP(ABC):
         and an array containing a probability distribution over target states
         """
         pass    
+
+    def get_event(self, event_ind):
+        return(event_ind)
+
+    @property
+    def dim(self):
+        raise NotImplementedError

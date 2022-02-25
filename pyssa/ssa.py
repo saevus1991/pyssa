@@ -40,7 +40,8 @@ class Simulator:
             event = None
         else:
             tau = -np.log(np.random.rand())/rate
-            event = ut.sample_discrete(prob)
+            event_ind = ut.sample_discrete(prob)
+            event = self.model.get_event(event_ind)
         # update time and state
         self.time += tau
         self.state = self.model.update(self.state, event)
@@ -86,12 +87,17 @@ class Simulator:
         else:
             dim = len(trajectory['initial'])
         num_steps = len(trajectory['times'])
-        trajectory['states'] = np.zeros([num_steps, dim])
+        trajectory['states'] = []
         # fill states
         state = self.model.state2label(trajectory['initial'])
         for i in range(num_steps):
             state = self.model.update(state, trajectory['events'][i])
-            trajectory['states'][i, :] = self.model.label2state(state)
+            trajectory['states'].append(self.model.label2state(state))
+        try:
+            trajectory['states'] = np.stack(trajectory['states'], axis=0)
+        except:
+            pass
+        return
 
             
 def simulate(model, initial, tspan, get_states=False):
@@ -105,29 +111,56 @@ def simulate(model, initial, tspan, get_states=False):
     return(trajectory)
 
 
-def discretize_trajectory(trajectory, sample_times, obs_model=None):
+def discretize_trajectory(trajectory, sample_times, obs_model=None, converter=None):
     """ 
     Discretize a trajectory of a jump process by linear interpolation 
     at the support points given in sample times
     Input
         trajectory: a dict with keys 'initial', 'tspan', 'times', 'states'
         sample_times: np.array containin the sample times
+        obs_model: an observation model from which to sample the state
+        converter: a converter function to translate the state representation to something that the obs_model understands
     """
-    initial = np.array(trajectory['initial'])
-    if (len(trajectory['times']) == 0):
-        times = trajectory['tspan']
-        states = np.stack([initial, initial])
-    elif (trajectory['times'][-1] < trajectory['tspan'][1]):
-        delta = (trajectory['tspan'][1]-trajectory['tspan'][0])/1e-3
-        times = np.concatenate([trajectory['tspan'][0:1], trajectory['times'], trajectory['tspan'][1:]+delta])
-        states = np.concatenate([initial.reshape(1, -1), trajectory['states'], trajectory['states'][-1:, :]])
+    if isinstance(trajectory['states'], np.ndarray) and converter is None:
+        initial = np.array(trajectory['initial'])
+        if (len(trajectory['times']) == 0):
+            times = trajectory['tspan']
+            states = np.stack([initial, initial])
+        elif (trajectory['times'][-1] < trajectory['tspan'][1]):
+            delta = (trajectory['tspan'][1]-trajectory['tspan'][0])/1e-3
+            times = np.concatenate([trajectory['tspan'][0:1], trajectory['times'], trajectory['tspan'][1:]+delta])
+            states = np.concatenate([initial.reshape(1, -1), trajectory['states'], trajectory['states'][-1:, :]])
+        else:
+            times = np.concatenate([trajectory['tspan'][0:1], trajectory['times']])
+            states = np.concatenate([initial.reshape(1, -1), trajectory['states']])
+        sample_states = interp1d(times, states, kind='zero', axis=0)(sample_times)
+    elif isinstance(trajectory['states'], list) or converter is not None:
+        if converter is None:
+            converter = lambda x: x
+        state = trajectory['initial'].copy()
+        time = trajectory['tspan'][0]
+        cnt = 0
+        sample_states = []
+        for i, t_i in enumerate(trajectory['times']):
+            while cnt < len(sample_times) and time <= sample_times[cnt] and t_i > sample_times[cnt]:
+                sample_states.append(converter(state))
+                cnt += 1
+            time = t_i
+            state = trajectory['states'][i]
+            if cnt == len(sample_times):
+                break
+        # convert to np array if possible
+        # try:
+        #     sample_states = np.concatenate(sample_states, axis=0)
+        # except ValueError:
+        #     pass
     else:
-        times = np.concatenate([trajectory['tspan'][0:1], trajectory['times']])
-        states = np.concatenate([initial.reshape(1, -1), trajectory['states']])
-    sample_states = interp1d(times, states, kind='zero', axis=0)(sample_times)
+        msg = "Unsupported type {type(trajectory['states'])} for trajectory states"
+        raise ValueError(msg)
+    # sample observations
     if obs_model is not None:
-        obs_dim = (obs_model.sample(states[0], sample_times[0])).size
-        obs_states = np.zeros((sample_states.shape[0], obs_dim))
+        obs_dim = (obs_model.sample(sample_states[0], sample_times[0])).size
+        obs_states = np.zeros((len(sample_states), obs_dim))
         for i in range(len(sample_times)):
             obs_states[i] = obs_model.sample(sample_states[i], sample_times[i])
         sample_states = obs_states
